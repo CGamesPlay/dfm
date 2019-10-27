@@ -3,12 +3,19 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-var config DfmConfig = NewDfmConfig()
-var cliOptions configFile
+var (
+	config      DfmConfig = NewDfmConfig()
+	cliOptions  configFile
+	addToRepo   string
+	addWithCopy bool
+)
 
 func fatal(err error) {
 	fmt.Fprintf(os.Stderr, "%v\n", err.Error())
@@ -16,7 +23,7 @@ func fatal(err error) {
 }
 
 func runInit(cmd *cobra.Command, args []string) {
-	err := config.SaveConfig()
+	err := config.Save()
 	if err != nil {
 		fatal(err)
 		return
@@ -32,8 +39,83 @@ func runCopy(cmd *cobra.Command, args []string) {
 	fmt.Printf("copying...\n")
 }
 
+func addSingleFile(filename string) error {
+	targetPath, err := filepath.Abs(filename)
+	if err != nil {
+		fatal(err)
+		return nil
+	}
+	// Verify file is under targetPath
+	if !strings.HasPrefix(targetPath, config.targetPath+"/") {
+		return fmt.Errorf("not in target path (%s)", config.targetPath)
+	}
+	relativePath := targetPath[len(config.targetPath)+1:]
+	stat, err := os.Lstat(targetPath)
+	if err != nil {
+		return err
+	}
+	if stat.IsDir() {
+		return fmt.Errorf("directories are not supported")
+	}
+	if !stat.Mode().IsRegular() {
+		return fmt.Errorf("only regular files are supported")
+	}
+	repoPath := config.RepoPath(addToRepo, relativePath)
+	if err := MakeDirAll(path.Dir(relativePath), config.targetPath, config.RepoPath(addToRepo, "")); err != nil {
+		return err
+	}
+	if addWithCopy {
+		if err := CopyFile(targetPath, repoPath); err != nil {
+			return err
+		}
+	} else {
+		if err := MoveFile(targetPath, repoPath); err != nil {
+			return err
+		}
+		if err := LinkFile(repoPath, targetPath); err != nil {
+			return err
+		}
+	}
+	config.AddToManifest(addToRepo, relativePath)
+	return nil
+}
+
+// Copy the given files into the repository and replace them with symlinks
 func runAdd(cmd *cobra.Command, args []string) {
-	fmt.Printf("adding... %v\n", args)
+	// If there is only one repo, allow add without specifying which one.
+	if addToRepo == "" && len(config.repos) == 1 {
+		addToRepo = config.repos[0]
+	}
+	if addToRepo == "" {
+		fatal(fmt.Errorf("no repos are configured and no repo was specifed"))
+		return
+	} else if !config.IsValidRepo(addToRepo) {
+		fatal(fmt.Errorf("repo %#v does not exist. To create it, run:\nmkdir %s", addToRepo, config.RepoPath(addToRepo, "")))
+		return
+	} else if !config.HasRepo(addToRepo) {
+		fatal(fmt.Errorf("repo %#v is not active, cannot add files to it", addToRepo))
+		return
+	}
+
+	failed := false
+	for _, filename := range args {
+		if err := addSingleFile(filename); err != nil {
+			if os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "%s: no such file or directory\n", filename)
+			} else {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", filename, err.Error())
+			}
+			failed = true
+		}
+	}
+	err := config.Save()
+	if err != nil {
+		fatal(err)
+		return
+	}
+	if failed {
+		os.Exit(1)
+	}
 }
 
 func runRemove(cmd *cobra.Command, args []string) {
@@ -55,6 +137,7 @@ func initConfig() {
 		return
 	}
 	config.applyFile(cliOptions)
+	fmt.Printf("%+v\n", config)
 }
 
 func main() {
@@ -65,8 +148,9 @@ func main() {
 		Version: "1.0.0",
 		Long:    "Manages your dotfiles",
 	}
-	rootCmd.PersistentFlags().StringVarP(&config.path, "dfm-dir", "d", "", "Directory where dfm repositories live")
-	rootCmd.PersistentFlags().StringArrayVarP(&cliOptions.Repos, "repos", "r", nil, "Repositories to track")
+	rootCmd.PersistentFlags().StringVarP(&config.path, "dfm-dir", "d", "", "directory where dfm repositories live")
+	rootCmd.PersistentFlags().StringArrayVarP(&cliOptions.Repos, "repos", "R", nil, "repositories to track")
+	rootCmd.PersistentFlags().StringVar(&config.targetPath, "target", config.targetPath, "directory to sync files in")
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
@@ -90,13 +174,16 @@ func main() {
 		Run:   runCopy,
 	})
 
-	rootCmd.AddCommand(&cobra.Command{
+	addCmd := &cobra.Command{
 		Use:   "add",
-		Short: "Begin tracking a file",
+		Short: "Begin tracking files",
 		Long:  "Copy the given files into the repository and replace the originals with links to the tracked files.",
 		Args:  cobra.MinimumNArgs(1),
 		Run:   runAdd,
-	})
+	}
+	addCmd.Flags().StringVarP(&addToRepo, "repo", "r", "", "repository to add the file to")
+	addCmd.Flags().BoolVar(&addWithCopy, "copy", false, "copy the file instead of moving and creating a link")
+	rootCmd.AddCommand(addCmd)
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:     "remove",
