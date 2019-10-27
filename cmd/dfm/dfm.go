@@ -31,12 +31,55 @@ func runInit(cmd *cobra.Command, args []string) {
 	fmt.Printf("Initialized %s as a dfm directory.\n", config.path)
 }
 
+func runSync(handleFile func(s, d string) error) {
+	fileList := map[string]string{}
+	for _, repo := range config.repos {
+		repoPath := config.RepoPath(repo, "")
+		filepath.Walk(repoPath, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				fatal(err)
+				return nil
+			}
+			if fi.IsDir() {
+				return nil
+			}
+			relativePath := path[len(repoPath)+1:]
+			fileList[relativePath] = repo
+			return nil
+		})
+	}
+	failed := false
+	newManifest := make(map[string]bool, len(fileList))
+	for relative, repo := range fileList {
+		repoPath := config.RepoPath(repo, relative)
+		targetPath := config.TargetPath(relative)
+		if err := handleFile(repoPath, targetPath); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+			failed = true
+			continue
+		}
+		newManifest[relative] = true
+	}
+	// XXX run auto clean
+	config.manifest = newManifest
+	config.Save()
+	if failed {
+		os.Exit(1)
+	}
+}
+
 func runLink(cmd *cobra.Command, args []string) {
-	fmt.Printf("linking...\n")
+	runSync(func(s, d string) error {
+		// XXX - check if link is already correct
+		return LinkFile(s, d)
+	})
 }
 
 func runCopy(cmd *cobra.Command, args []string) {
-	fmt.Printf("copying...\n")
+	runSync(func(s, d string) error {
+		// XXX - check if files are equivalent
+		return CopyFile(s, d)
+	})
 }
 
 func addSingleFile(filename string) error {
@@ -119,6 +162,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 }
 
 func runRemove(cmd *cobra.Command, args []string) {
+	// XXX just run an auto clean with an empty manifest
 	fmt.Printf("removing...\n")
 }
 

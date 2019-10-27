@@ -13,33 +13,25 @@ import (
 const TomlFilename = ".dfm.toml"
 
 type configFile struct {
-	Repos    []string            `toml:"repos"`
-	Target   string              `toml:"target"`
-	Manifest map[string][]string `toml:"manifest"`
+	Repos    []string `toml:"repos"`
+	Target   string   `toml:"target"`
+	Manifest []string `toml:"manifest"`
 }
 
-func manifestToConfig(manifest map[string]map[string]bool) map[string][]string {
-	result := make(map[string][]string, len(manifest))
-	for repo, m := range manifest {
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		result[repo] = keys
+func manifestToConfig(manifest map[string]bool) []string {
+	keys := make([]string, 0, len(manifest))
+	for k := range manifest {
+		keys = append(keys, k)
 	}
-	return result
+	return keys
 }
 
-func configToManifest(config map[string][]string) map[string]map[string]bool {
-	result := make(map[string]map[string]bool, len(config))
-	for repo, arr := range config {
-		m := make(map[string]bool, len(arr))
-		for _, key := range arr {
-			m[key] = true
-		}
-		result[repo] = m
+func configToManifest(config []string) map[string]bool {
+	m := make(map[string]bool, len(config))
+	for _, key := range config {
+		m[key] = true
 	}
-	return result
+	return m
 }
 
 // DfmConfig is the main object that holds the configuration for dfm.
@@ -51,7 +43,7 @@ type DfmConfig struct {
 	// Active repos
 	repos []string
 	// Tracked files
-	manifest map[string]map[string]bool
+	manifest map[string]bool
 }
 
 // NewDfmConfig creates an empty DfmConfig.
@@ -59,7 +51,7 @@ func NewDfmConfig() DfmConfig {
 	home, _ := os.LookupEnv("HOME")
 	return DfmConfig{
 		targetPath: path.Clean(home),
-		manifest:   map[string]map[string]bool{},
+		manifest:   map[string]bool{},
 	}
 }
 
@@ -154,12 +146,12 @@ func (config *DfmConfig) RepoPath(repo string, relative string) string {
 	return pathJoin(config.path, repo, relative)
 }
 
+// TargetPath returns the path to the given file inside of the target.
+func (config *DfmConfig) TargetPath(relative string) string {
+	return pathJoin(config.targetPath, relative)
+}
+
 // AddToManifest registers a file in a given manifest
 func (config *DfmConfig) AddToManifest(repo string, relative string) {
-	m, ok := config.manifest[repo]
-	if !ok {
-		m = map[string]bool{}
-		config.manifest[repo] = m
-	}
-	m[relative] = true
+	config.manifest[relative] = true
 }
