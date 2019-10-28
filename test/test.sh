@@ -1,4 +1,6 @@
 #!/bin/bash
+# Runs a set of DFM commands in empty directories and make some simple
+# assertions.
 set -e
 
 banner() {
@@ -61,3 +63,5 @@ banner 'Cleaning up'
 dfm remove
 # XXX - fix this
 #[ ! -e test_home/.config ] || fail 'empty directory not cleaned'
+
+rm -rf dfmdir test_home

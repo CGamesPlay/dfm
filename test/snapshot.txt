@@ -1,0 +1,36 @@
+$ dfm --repos files --target test_home init
+Initialized ./dfmdir as a dfm directory.
+
+# Sync dry run
+$ dfm link -n
+files/.bashrc -> ./test_home/.bashrc
+
+# Initial sync
+$ dfm link
+files/.bashrc -> ./test_home/.bashrc
+
+# Everything is up to date
+$ dfm link -v
+skipping ./test_home/.bashrc: already up to date
+
+# Adding a new config file
+$ dfm link
+files/.zshrc -> ./test_home/.zshrc
+
+# Removing a config file
+$ dfm link
+removed .zshrc
+
+# Importing with add
+$ dfm add test_home/.config/fish/config.fish
+added .config/fish/config.fish
+
+# Exporting files with copy
+$ dfm copy --force
+files/.bashrc -> ./test_home/.bashrc
+files/.config/fish/config.fish -> ./test_home/.config/fish/config.fish
+
+# Cleaning up
+$ dfm remove
+removed .bashrc
+removed .config/fish/config.fish
