@@ -38,10 +38,17 @@ func defaultLogger(operation, relative, repo string, reason error) {
 
 func errorHandler(fileError *FileError) error {
 	if force && os.IsExist(fileError.Cause()) {
-		linkErr, ok := fileError.Cause().(*os.LinkError)
-		if ok {
-			dest := linkErr.New
-			os.Remove(dest)
+		if linkErr, ok := fileError.Cause().(*os.LinkError); ok {
+			err := os.Remove(linkErr.New)
+			if err != nil {
+				return err
+			}
+			return Retry
+		} else if pathErr, ok := fileError.Cause().(*os.PathError); ok {
+			err := os.Remove(pathErr.Path)
+			if err != nil {
+				return err
+			}
 			return Retry
 		}
 	}

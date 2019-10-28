@@ -49,6 +49,11 @@ dfm add test_home/.config/fish/config.fish
 [ -L test_home/.config/fish/config.fish ] || fail 'config.fish was not replaced by a link'
 [ -f dfmdir/files/.config/fish/config.fish ] || fail 'config.fish is not a regular file'
 
+banner 'Exporting files with copy'
+dfm copy --force
+[ -e test_home/.bashrc ] || fail 'bashrc missing'
+[ ! -L test_home/.bashrc ] || fail 'bashrc is a link'
+
 banner 'Cleaning up'
 dfm remove
 # XXX - fix this

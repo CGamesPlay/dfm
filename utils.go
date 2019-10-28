@@ -59,7 +59,7 @@ func MakeDirAll(fs afero.Fs, relative, source, dest string) error {
 func MoveFile(fs afero.Fs, source, dest string) error {
 	stat, _ := fs.Stat(dest)
 	if stat != nil {
-		return fmt.Errorf("%s: already exists", dest)
+		return &os.PathError{Op: "move", Path: dest, Err: os.ErrExist}
 	}
 
 	switch fs.(type) {
@@ -88,6 +88,11 @@ func MoveFile(fs afero.Fs, source, dest string) error {
 
 // CopyFile will copy the file from source to dest.
 func CopyFile(fs afero.Fs, source, dest string) error {
+	stat, _ := fs.Stat(dest)
+	if stat != nil {
+		return &os.PathError{Op: "copy", Path: dest, Err: os.ErrExist}
+	}
+
 	switch fs.(type) {
 	case *afero.OsFs:
 		// This implementation shells out to cp to avoid dealing with
@@ -101,10 +106,6 @@ func CopyFile(fs afero.Fs, source, dest string) error {
 		}
 		return nil
 	case *afero.MemMapFs:
-		stat, _ := fs.Stat(dest)
-		if stat != nil {
-			return fmt.Errorf("%s: already exists", dest)
-		}
 		data, err := afero.ReadFile(fs, source)
 		if err != nil {
 			return err
@@ -138,6 +139,15 @@ func IsLinkedFile(fs afero.Fs, source, dest string) (bool, error) {
 			return false, err
 		}
 		return true, nil
+	case *afero.MemMapFs:
+		bytes, err := afero.ReadFile(fs, dest)
+		if os.IsNotExist(err) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+		matches := string(bytes) == "symlink to "+source
+		return matches, nil
 	default:
 		return false, fmt.Errorf("unsupported afero fs")
 	}
@@ -154,7 +164,7 @@ func LinkFile(fs afero.Fs, source, dest string) error {
 	case *afero.MemMapFs:
 		stat, _ := fs.Stat(dest)
 		if stat != nil {
-			return fmt.Errorf("%s: already exists", dest)
+			return &os.PathError{Op: "symlink", Path: dest, Err: os.ErrExist}
 		}
 		content := "symlink to " + source
 		return afero.WriteFile(fs, dest, []byte(content), 0666)
