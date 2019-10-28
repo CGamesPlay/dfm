@@ -7,13 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cevaris/ordered_map"
+
 	"github.com/spf13/afero"
 )
-
-// Dfm messages:
-// - added file (relative, repo)
-// - linked/copied file (relative, repo)
-// - removed file (relative)
 
 const (
 	// OperationAdd means a file was added to a repo.
@@ -177,7 +174,11 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 		for {
 			err = dfm.addFile(filename, repo, link)
 			if err != nil {
-				err = errorHandler(err.(*FileError))
+				fileErr, ok := err.(*FileError)
+				if !ok {
+					fileErr = WrapFileError(err, filename)
+				}
+				err = errorHandler(fileErr)
 			}
 			if err != Retry {
 				break
@@ -199,12 +200,13 @@ func (dfm *Dfm) runSync(
 	errorHandler ErrorHandler,
 	operation string,
 	handleFile func(s, d string) error,
-) (err error) {
+) error {
+	fs := dfm.fs
 	// Map relative -> repo. Later repos override earlier ones.
-	fileList := map[string]string{}
+	fileList := ordered_map.NewOrderedMap()
 	for _, repo := range dfm.Config.repos {
 		repoPath := dfm.RepoPath(repo, "")
-		filepath.Walk(repoPath, func(path string, fi os.FileInfo, err error) error {
+		err := afero.Walk(fs, repoPath, func(path string, fi os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -212,37 +214,55 @@ func (dfm *Dfm) runSync(
 				return nil
 			}
 			relativePath := path[len(repoPath)+1:]
-			fileList[relativePath] = repo
+			fileList.Set(relativePath, repo)
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 	}
 
-	nextManifest := make(map[string]bool, len(fileList))
-	for relative, repo := range fileList {
+	nextManifest := make(map[string]bool, fileList.Len())
+	iter := fileList.IterFunc()
+	var overallErr error
+	for kv, ok := iter(); ok; kv, ok = iter() {
+		relative := kv.Key.(string)
+		repo := kv.Value.(string)
 		repoPath := dfm.RepoPath(repo, relative)
 		targetPath := dfm.TargetPath(relative)
 		fileOperation := operation
-		var originalError error
+		var logErr error
 		for {
-			originalError = handleFile(repoPath, targetPath)
-			if originalError != nil {
-				err = errorHandler(WrapFileError(originalError, relative))
-				if err == nil {
-					fileOperation = OperationSkip
-				}
-			}
-			if err != Retry {
+			logErr = nil
+			rawErr := handleFile(repoPath, targetPath)
+			if rawErr == nil {
+				break
+			} else if rawErr == Skipped {
+				fileOperation = OperationSkip
 				break
 			}
+			wrappedErr, ok := rawErr.(*FileError)
+			if !ok {
+				wrappedErr = WrapFileError(rawErr, relative)
+			}
+			logErr = wrappedErr
+			newErr := errorHandler(wrappedErr)
+			if newErr == nil {
+				fileOperation = OperationSkip
+			} else if newErr == Retry {
+				continue
+			}
+			overallErr = newErr
+			break
 		}
-		dfm.log(fileOperation, relative, repo, err)
-		if err != nil {
+		dfm.log(fileOperation, relative, repo, logErr)
+		if overallErr != nil {
 			break
 		}
 		nextManifest[relative] = true
 	}
 
-	if err != nil {
+	if overallErr != nil {
 		// Since there was an error, we will bypass the autoclean. This means
 		// all existing files plus all new files are presently synced. Merge the
 		// old and new manifests.
@@ -257,7 +277,7 @@ func (dfm *Dfm) runSync(
 	if saveErr := dfm.Config.Save(); saveErr != nil {
 		return saveErr
 	}
-	return err
+	return overallErr
 }
 
 // LinkAll creates symlinks for files in all repos in the target directory.
@@ -298,5 +318,8 @@ func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
 				delete(dfm.Config.manifest, filename)
 			}
 		}
+	}
+	for filename := range nextManifest {
+		dfm.Config.manifest[filename] = true
 	}
 }

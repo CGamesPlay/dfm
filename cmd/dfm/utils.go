@@ -130,6 +130,10 @@ func LinkFile(fs afero.Fs, source, dest string) error {
 	case afero.OsFs:
 		return os.Symlink(source, dest)
 	case *afero.MemMapFs:
+		stat, _ := fs.Stat(dest)
+		if stat != nil {
+			return fmt.Errorf("%s: already exists", dest)
+		}
 		content := "symlink to " + source
 		return afero.WriteFile(fs, dest, []byte(content), 0666)
 	default:

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -13,17 +14,21 @@ repos = ["files"]
 target = "/home/test"
 `
 
-const preinstalledContent = "preinstalled config file"
+const fileContent = "# config file"
 
-func newFs(config string, preinstalled []string) afero.Fs {
+func noErrorHandler(err *FileError) error {
+	return err
+}
+
+func newFs(config string, files []string) afero.Fs {
 	fs := afero.NewMemMapFs()
 	fs.MkdirAll("/home/test/dotfiles/files", 0777)
 	fs.MkdirAll("/home/test/dotfiles/inactive", 0777)
 	if config != "" {
 		afero.WriteFile(fs, "/home/test/dotfiles/.dfm.toml", []byte(emptyConfig), 0666)
 	}
-	for _, filename := range preinstalled {
-		afero.WriteFile(fs, filename, []byte(preinstalledContent), 0666)
+	for _, filename := range files {
+		afero.WriteFile(fs, filename, []byte(fileContent), 0666)
 	}
 	return fs
 }
@@ -32,6 +37,28 @@ func newDfm(t *testing.T, fs afero.Fs) *Dfm {
 	dfm, err := NewDfmFs(fs, "/home/test/dotfiles")
 	require.NoError(t, err)
 	return dfm
+}
+
+func initialSync(t *testing.T, dfm *Dfm) {
+	err := dfm.LinkAll(noErrorHandler)
+	require.NoError(t, err)
+	*dfm = *newDfm(t, dfm.fs)
+}
+
+type logMessage struct {
+	operation, relative, repo, reason string
+}
+
+type testLog struct {
+	messages []logMessage
+}
+
+func (logger *testLog) log(operation, relative, repo string, reason error) {
+	message := ""
+	if reason != nil {
+		message = reason.Error()
+	}
+	logger.messages = append(logger.messages, logMessage{operation, relative, repo, message})
 }
 
 func TestInit(t *testing.T) {
@@ -61,7 +88,7 @@ func TestAdd(t *testing.T) {
 	require.NoError(t, err)
 	bytes, err := afero.ReadFile(fs, "/home/test/dotfiles/files/.bashrc")
 	require.NoError(t, err)
-	require.Equal(t, preinstalledContent, string(bytes))
+	require.Equal(t, fileContent, string(bytes))
 	bytes, err = afero.ReadFile(fs, "/home/test/.bashrc")
 	require.NoError(t, err)
 	require.Equal(t, "symlink to /home/test/dotfiles/files/.bashrc", string(bytes))
@@ -75,10 +102,10 @@ func TestAddCopy(t *testing.T) {
 	require.NoError(t, err)
 	bytes, err := afero.ReadFile(fs, "/home/test/dotfiles/files/.bashrc")
 	require.NoError(t, err)
-	require.Equal(t, preinstalledContent, string(bytes))
+	require.Equal(t, fileContent, string(bytes))
 	bytes, err = afero.ReadFile(fs, "/home/test/.bashrc")
 	require.NoError(t, err)
-	require.Equal(t, preinstalledContent, string(bytes))
+	require.Equal(t, fileContent, string(bytes))
 	require.Equal(t, map[string]bool{".bashrc": true}, dfm.Config.manifest)
 }
 
@@ -99,7 +126,119 @@ func TestAddNested(t *testing.T) {
 	require.NoError(t, err)
 	bytes, err := afero.ReadFile(fs, "/home/test/dotfiles/files/.config/fish/config.fish")
 	require.NoError(t, err)
-	require.Equal(t, preinstalledContent, string(bytes))
+	require.Equal(t, fileContent, string(bytes))
+}
+
+func TestSync(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.config/fish/config.fish",
+	})
+	dfm := newDfm(t, fs)
+	logger := &testLog{}
+	dfm.Logger = logger.log
+	handleFile := func(s, d string) error {
+		return nil
+	}
+	err := dfm.runSync(noErrorHandler, OperationLink, handleFile)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{".config/fish/config.fish": true}, dfm.Config.manifest)
+	require.Equal(t, []logMessage{
+		{OperationLink, ".config/fish/config.fish", "files", ""},
+	}, logger.messages)
+}
+
+func TestSyncError(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.fileA",
+		"/home/test/dotfiles/files/.fileC",
+	})
+	dfm := newDfm(t, fs)
+	initialSync(t, dfm)
+	var logger testLog
+	dfm.Logger = logger.log
+
+	handleFile := func(s, d string) error {
+		if d == "/home/test/.fileB" {
+			return fmt.Errorf("fake error")
+		} else if d == "/home/test/.fileC" {
+			require.FailNow(t, "runSync should have aborted at fileB")
+		}
+		exists, err := afero.Exists(fs, d)
+		if err != nil {
+			return err
+		} else if exists {
+			return Skipped
+		}
+		return LinkFile(dfm.fs, s, d)
+	}
+	afero.WriteFile(fs, "/home/test/dotfiles/files/.fileB", []byte(fileContent), 0666)
+	err := dfm.runSync(noErrorHandler, OperationLink, handleFile)
+	require.Error(t, err)
+	require.Equal(t, ".fileB: fake error", err.Error())
+	require.Equal(t, map[string]bool{".fileA": true, ".fileC": true}, dfm.Config.manifest)
+	require.Equal(t, []logMessage{
+		{OperationSkip, ".fileA", "files", ""},
+		{OperationLink, ".fileB", "files", ".fileB: fake error"},
+	}, logger.messages)
+}
+
+func TestSyncRetry(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.fileA",
+	})
+	dfm := newDfm(t, fs)
+	var logger testLog
+	dfm.Logger = logger.log
+
+	timesCalled := 0
+	handleFile := func(s, d string) (err error) {
+		timesCalled++
+		if timesCalled == 1 {
+			return fmt.Errorf("temporary error")
+		}
+		exists, err := afero.Exists(fs, d)
+		if err != nil {
+			return err
+		} else if exists {
+			return nil
+		}
+		return LinkFile(dfm.fs, s, d)
+	}
+	errorHandler := func(err *FileError) error {
+		if err.Message == "temporary error" {
+			return Retry
+		}
+		return err
+	}
+	err := dfm.runSync(errorHandler, OperationLink, handleFile)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{".fileA": true}, dfm.Config.manifest)
+	require.Equal(t, timesCalled, 2)
+	require.Equal(t, []logMessage{
+		{OperationLink, ".fileA", "files", ""},
+	}, logger.messages)
+}
+
+func TestSyncSkip(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.fileA",
+	})
+	dfm := newDfm(t, fs)
+	var logger testLog
+	dfm.Logger = logger.log
+
+	handleFile := func(s, d string) (err error) {
+		return fmt.Errorf("can't handle file")
+	}
+	errorHandler := func(err *FileError) error {
+		return nil
+	}
+	err := dfm.runSync(errorHandler, OperationLink, handleFile)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{".fileA": true}, dfm.Config.manifest)
+	require.Equal(t, []logMessage{
+		{OperationSkip, ".fileA", "files", ".fileA: can't handle file"},
+	}, logger.messages)
 }
 
 func TestIsActiveRepo(t *testing.T) {
@@ -114,16 +253,16 @@ func TestIsActiveRepo(t *testing.T) {
 }
 
 func TestChangeConfig(t *testing.T) {
-	t.Skip("Use a synced file instead of the nonsynced one")
 	fs := newFs(emptyConfig, []string{})
 	dfm := newDfm(t, fs)
+	dfm.Config.manifest["some/existing/file"] = true
 	dfm.Config.repos = []string{"files2"}
 	err := dfm.Config.Save()
 	require.NoError(t, err)
 	cfgBytes, err := afero.ReadFile(fs, "/home/test/dotfiles/.dfm.toml")
 	require.NoError(t, err)
 	require.Equal(t,
-		`manifest = ["asdf"]
+		`manifest = ["some/existing/file"]
 repos = ["files2"]
 target = "/home/test"
 `,

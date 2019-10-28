@@ -19,6 +19,10 @@ type ErrorHandler func(err *FileError) error
 // being named ErrRetry.
 var Retry = errors.New("retry this file").(error)
 
+// Skipped is used internally to signify that a file was already up to date and
+// nothing needed to happen.
+var Skipped = errors.New("skipped").(error)
+
 // FileError represents any error dfm encountered while managing files.
 type FileError struct {
 	Message  string
