@@ -254,6 +254,9 @@ func (dfm *Dfm) runSync(
 	var overallErr error
 	for kv, ok := iter(); ok; kv, ok = iter() {
 		relative := kv.Key.(string)
+		// Add this file to the manifest now. Even if there is an error, we
+		// don't want autoclean to remove this file.
+		nextManifest[relative] = true
 		repo := kv.Value.(string)
 		repoPath := dfm.RepoPath(repo, relative)
 		targetPath := dfm.TargetPath(relative)
@@ -263,10 +266,9 @@ func (dfm *Dfm) runSync(
 			// XXX - change this to (relative, repo)
 			rawErr := handleFile(repoPath, targetPath)
 			if rawErr == nil || rawErr == ErrNotNeeded {
-				nextManifest[relative] = true
 				if rawErr == ErrNotNeeded {
 					fileOperation = OperationSkip
-					skipReason = rawErr
+					skipReason = nil
 				}
 			} else {
 				wrappedErr, ok := rawErr.(*FileError)

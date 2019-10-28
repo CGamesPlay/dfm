@@ -31,6 +31,9 @@ banner "Initial sync"
 dfm link
 [ -L test_home/.bashrc ] || fail ".bashrc is not a symlink"
 
+banner "Everything is up to date"
+dfm link -v
+
 banner "Adding a new config file"
 echo 'config file' > dfmdir/files/.zshrc
 dfm link

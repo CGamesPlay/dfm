@@ -171,9 +171,9 @@ func TestSyncErrorPartial(t *testing.T) {
 	err := dfm.runSync(noErrorHandler, OperationLink, handleFile)
 	require.Error(t, err)
 	require.Equal(t, ".fileB: fake error", err.Error())
-	require.Equal(t, map[string]bool{".fileA": true, ".fileC": true}, dfm.Config.manifest)
+	require.Equal(t, map[string]bool{".fileA": true, ".fileB": true, ".fileC": true}, dfm.Config.manifest)
 	require.Equal(t, []logMessage{
-		{OperationSkip, ".fileA", "files", "already up to date"},
+		{OperationSkip, ".fileA", "files", ""},
 	}, logger.messages)
 }
 
@@ -205,11 +205,11 @@ func TestSyncIgnoreError(t *testing.T) {
 	afero.WriteFile(fs, "/home/test/dotfiles/files/.fileB", []byte(fileContent), 0666)
 	err := dfm.runSync(errorHandler, OperationLink, handleFile)
 	require.NoError(t, err)
-	require.Equal(t, map[string]bool{".fileA": true, ".fileC": true}, dfm.Config.manifest)
+	require.Equal(t, map[string]bool{".fileA": true, ".fileB": true, ".fileC": true}, dfm.Config.manifest)
 	require.Equal(t, []logMessage{
-		{OperationSkip, ".fileA", "files", "already up to date"},
+		{OperationSkip, ".fileA", "files", ""},
 		{OperationSkip, ".fileB", "files", ".fileB: fake error"},
-		{OperationSkip, ".fileC", "files", "already up to date"},
+		{OperationSkip, ".fileC", "files", ""},
 	}, logger.messages)
 }
 

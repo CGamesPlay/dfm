@@ -12,6 +12,7 @@ var (
 	dfmDir      string
 	dfm         *Dfm
 	cliOptions  configFile
+	verbose     bool
 	dryRun      bool
 	force       bool
 	addToRepo   string
@@ -24,11 +25,13 @@ func defaultLogger(operation, relative, repo string, reason error) {
 	case OperationLink, OperationCopy:
 		fmt.Printf("%s -> %s\n", pathJoin(repo, relative), dfm.TargetPath(relative))
 	case OperationSkip:
-		fileErr, isFileErr := reason.(*FileError)
 		if reason == nil {
-			reason = fmt.Errorf("already up to date")
-		} else if isFileErr && os.IsExist(fileErr.Cause()) {
-			reason = fmt.Errorf("file already exists")
+			reason = ErrNotNeeded
+			if !verbose {
+				return
+			}
+		} else if fileErr, ok := reason.(*FileError); ok {
+			reason = fmt.Errorf(fileErr.Message)
 		}
 		fmt.Printf("skipping %s: %s\n", dfm.TargetPath(relative), reason)
 	default:
@@ -38,19 +41,19 @@ func defaultLogger(operation, relative, repo string, reason error) {
 
 func errorHandler(fileError *FileError) error {
 	if force && os.IsExist(fileError.Cause()) {
+		var removeErr error
 		if linkErr, ok := fileError.Cause().(*os.LinkError); ok {
-			err := os.Remove(linkErr.New)
-			if err != nil {
-				return err
-			}
-			return Retry
+			removeErr = os.Remove(linkErr.New)
 		} else if pathErr, ok := fileError.Cause().(*os.PathError); ok {
-			err := os.Remove(pathErr.Path)
-			if err != nil {
-				return err
-			}
-			return Retry
+			removeErr = os.Remove(pathErr.Path)
+		} else {
+			removeErr = fileError.Cause()
 		}
+		if removeErr != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", fileError.Filename, removeErr)
+			return nil
+		}
+		return Retry
 	}
 	failed = true
 	return nil
@@ -153,6 +156,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&dfmDir, "dfm-dir", "d", "", "directory where dfm repositories live")
 	rootCmd.PersistentFlags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "output every file, even unchanged ones")
 	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would happen, but don't actually modify files")
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "overwrite files that already exist")
 

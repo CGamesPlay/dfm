@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 )
 
 // ErrorHandler is the type of function called when dfm encounters an error with
@@ -50,8 +51,17 @@ func NewFileErrorf(filename string, message string, args ...interface{}) *FileEr
 // WrapFileError takes an existing error and creates a new FileError for the
 // given file.
 func WrapFileError(cause error, filename string) *FileError {
+	var message string
+	switch err := cause.(type) {
+	case *os.PathError:
+		message = err.Err.Error()
+	case *os.LinkError:
+		message = err.Err.Error()
+	default:
+		message = cause.Error()
+	}
 	return &FileError{
-		Message:  cause.Error(),
+		Message:  message,
 		Filename: filename,
 		cause:    cause,
 	}
