@@ -12,7 +12,7 @@ import (
 // attempt the operation again (and call the handler with the new error, if
 // any). If the handler returns anything else, dfm will abort and return the
 // error.
-type ErrorHandler func(err FileError) error
+type ErrorHandler func(err *FileError) error
 
 // Retry is used by ErrorHandler to signal to dfm to attempt the file operation
 // again. The type cast is to suppress golint complaining about the variable not
@@ -20,59 +20,47 @@ type ErrorHandler func(err FileError) error
 var Retry = errors.New("retry this file").(error)
 
 // FileError represents any error dfm encountered while managing files.
-type FileError interface {
-	Message() string
-	Filename() string
-	Error() string
-	Cause() error
-}
-
-type fileErrorImpl struct {
-	message  string
-	filename string
+type FileError struct {
+	Message  string
+	Filename string
 	cause    error
 }
 
 // NewFileError creates a new FileError for the provided file.
-func NewFileError(filename string, message string) FileError {
-	return &fileErrorImpl{
-		message:  message,
-		filename: filename,
+func NewFileError(filename string, message string) *FileError {
+	return &FileError{
+		Message:  message,
+		Filename: filename,
 	}
 }
 
 // NewFileErrorf creates a new FileError for the provided file with a format
 // string.
-func NewFileErrorf(filename string, message string, args ...interface{}) FileError {
-	return &fileErrorImpl{
-		message:  fmt.Sprintf(message, args...),
-		filename: filename,
+func NewFileErrorf(filename string, message string, args ...interface{}) *FileError {
+	return &FileError{
+		Message:  fmt.Sprintf(message, args...),
+		Filename: filename,
 	}
 }
 
 // WrapFileError takes an existing error and creates a new FileError for the
 // given file.
-func WrapFileError(cause error, filename string) FileError {
-	return &fileErrorImpl{
-		message:  cause.Error(),
-		filename: filename,
+func WrapFileError(cause error, filename string) *FileError {
+	return &FileError{
+		Message:  cause.Error(),
+		Filename: filename,
 		cause:    cause,
 	}
 }
 
-func (err *fileErrorImpl) Message() string {
-	return err.message
-}
-
-func (err *fileErrorImpl) Filename() string {
-	return err.filename
-}
-
-func (err *fileErrorImpl) Error() string {
-	return fmt.Sprintf("%s: %s", err.filename, err.message)
+func (err *FileError) Error() string {
+	return fmt.Sprintf("%s: %s", err.Filename, err.Message)
 }
 
 // Cause is the underlying cause of the error
-func (err *fileErrorImpl) Cause() error {
+func (err *FileError) Cause() error {
+	if err.cause == nil {
+		return nil
+	}
 	return err.cause
 }

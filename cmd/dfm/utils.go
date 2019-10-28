@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path"
+
+	"github.com/spf13/afero"
 )
 
 func pathJoin(components ...string) string {
@@ -21,50 +23,126 @@ func pathJoin(components ...string) string {
 	return result
 }
 
+// IsRegularFile will return true if the given file is a regular file (symlinks
+// not allowed)
+func IsRegularFile(fs afero.Fs, path string) (bool, error) {
+	var (
+		stat os.FileInfo
+		err  error
+	)
+	if lstater, ok := fs.(afero.Lstater); ok {
+		stat, _, err = lstater.LstatIfPossible(path)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		stat, err = fs.Stat(path)
+		if err != nil {
+			return false, err
+		}
+	}
+	if !stat.Mode().IsRegular() {
+		return false, nil
+	}
+	return true, nil
+}
+
 // MakeDirAll will make sure all directories in dest/relative exist.
-func MakeDirAll(relative, source, dest string) error {
+func MakeDirAll(fs afero.Fs, relative, source, dest string) error {
 	// XXX - when creating directories, use source to find the permissions of
 	// each new directory.
-	return os.MkdirAll(path.Join(dest, relative), 0777)
+	return fs.MkdirAll(path.Join(dest, relative), 0777)
 }
 
 // MoveFile will move the file from source to dest, failing if the file already
 // exists.
-func MoveFile(source, dest string) error {
-	stat, _ := os.Stat(dest)
+func MoveFile(fs afero.Fs, source, dest string) error {
+	stat, _ := fs.Stat(dest)
 	if stat != nil {
 		return fmt.Errorf("%s: already exists", dest)
 	}
-	// This implementation shells out to mv to avoid cross-device failures that
-	// might happen with os.Rename.
-	cmd := exec.Command("mv", "-n", source, dest)
-	if err := cmd.Run(); err != nil {
-		if exitErr := err.(*exec.ExitError); exitErr != nil && len(exitErr.Stderr) > 0 {
-			return fmt.Errorf(string(exitErr.Stderr))
+
+	switch fs.(type) {
+	case afero.OsFs:
+		// This implementation shells out to mv to avoid cross-device failures
+		// that might happen with os.Rename.
+		cmd := exec.Command("mv", "-n", source, dest)
+		if err := cmd.Run(); err != nil {
+			if exitErr := err.(*exec.ExitError); exitErr != nil && len(exitErr.Stderr) > 0 {
+				return fmt.Errorf(string(exitErr.Stderr))
+			}
+			return fmt.Errorf("failed to move file")
 		}
-		return fmt.Errorf("failed to move file")
+		return nil
+	case *afero.MemMapFs:
+		return fs.Rename(source, dest)
+	default:
+		return &os.LinkError{
+			Op:  "move",
+			Old: source,
+			New: dest,
+			Err: fmt.Errorf("unsupported afero fs"),
+		}
 	}
-	return nil
 }
 
 // CopyFile will copy the file from source to dest.
-func CopyFile(source, dest string) error {
-	// This implementation shells out to cp to avoid dealing with permissions,
-	// timestamps, extended attributes, etc.
-	cmd := exec.Command("cp", "-pn", source, dest)
-	if err := cmd.Run(); err != nil {
-		if exitErr := err.(*exec.ExitError); exitErr != nil && len(exitErr.Stderr) > 0 {
-			return fmt.Errorf(string(exitErr.Stderr))
+func CopyFile(fs afero.Fs, source, dest string) error {
+	switch fs.(type) {
+	case afero.OsFs:
+		// This implementation shells out to cp to avoid dealing with
+		// permissions, timestamps, extended attributes, etc.
+		cmd := exec.Command("cp", "-pn", source, dest)
+		if err := cmd.Run(); err != nil {
+			if exitErr := err.(*exec.ExitError); exitErr != nil && len(exitErr.Stderr) > 0 {
+				return fmt.Errorf(string(exitErr.Stderr))
+			}
+			return fmt.Errorf("failed to copy file")
 		}
-		return fmt.Errorf("failed to copy file")
+		return nil
+	case *afero.MemMapFs:
+		stat, _ := fs.Stat(dest)
+		if stat != nil {
+			return fmt.Errorf("%s: already exists", dest)
+		}
+		data, err := afero.ReadFile(fs, source)
+		if err != nil {
+			return err
+		}
+		err = afero.WriteFile(fs, dest, data, 0777)
+		return err
+	default:
+		return &os.LinkError{
+			Op:  "copy",
+			Old: source,
+			New: dest,
+			Err: fmt.Errorf("unsupported afero fs"),
+		}
 	}
-	return nil
 }
 
 // LinkFile creates a link at dest that points to source.
-func LinkFile(source, dest string) error {
+func LinkFile(fs afero.Fs, source, dest string) error {
 	if !path.IsAbs(source) {
 		return fmt.Errorf("must use an absolute path for link source")
 	}
-	return os.Symlink(source, dest)
+	switch fs.(type) {
+	case afero.OsFs:
+		return os.Symlink(source, dest)
+	case *afero.MemMapFs:
+		content := "symlink to " + source
+		return afero.WriteFile(fs, dest, []byte(content), 0666)
+	default:
+		return &os.LinkError{
+			Op:  "link",
+			Old: source,
+			New: dest,
+			Err: fmt.Errorf("unsupported afero fs"),
+		}
+	}
+}
+
+// RemoveFile removes the listed file.
+func RemoveFile(fs afero.Fs, path string) error {
+	return fs.Remove(path)
 }

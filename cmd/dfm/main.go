@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	dfm         Dfm = NewDfm()
+	dfm         Dfm
 	cliOptions  configFile
 	addToRepo   string
 	addWithCopy bool
@@ -43,7 +43,7 @@ func runInit(cmd *cobra.Command, args []string) {
 
 func runSync(method func(errorHandler ErrorHandler) error) {
 	failed := false
-	err := method(func(err FileError) error {
+	err := method(func(err *FileError) error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err)
 			failed = true
@@ -78,9 +78,9 @@ func runAdd(cmd *cobra.Command, args []string) {
 		return
 	}
 	failed := false
-	err := dfm.AddFiles(args, addToRepo, !addWithCopy, func(err FileError) error {
+	err := dfm.AddFiles(args, addToRepo, !addWithCopy, func(err *FileError) error {
 		if os.IsNotExist(err.Cause()) {
-			fmt.Fprintf(os.Stderr, "%s: no such file or directory\n", err.Filename())
+			fmt.Fprintf(os.Stderr, "%s: no such file or directory\n", err.Filename)
 		} else {
 			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 		}
@@ -98,8 +98,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 }
 
 func runRemove(cmd *cobra.Command, args []string) {
-	// XXX just run an auto clean with an empty manifest
-	fmt.Printf("removing...\n")
+	dfm.RemoveAll()
 }
 
 func initConfig() {

@@ -6,6 +6,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/afero"
 )
 
 // Dfm messages:
@@ -20,7 +22,8 @@ const (
 	OperationLink = "linked"
 	// OperationCopy means a file was copied from a repo to the target.
 	OperationCopy = "copied"
-	// OperationRemove means a file was removed from the target.
+	// OperationRemove means a file was removed from the target. If there was an
+	// error removing the file, reason will describe it.
 	OperationRemove = "removed"
 	// OperationSkip means a file was not copied/linked to the target. The
 	// reason will be the original error, even though the ErrorHandler
@@ -31,7 +34,7 @@ const (
 
 // Logger is the type of function that dfm calls whenever it performs a file
 // operation.
-type Logger func(operation string, relative string, repo string, reason error)
+type Logger func(operation, relative, repo string, reason error)
 
 // Dfm is the main controller class for API access to dfm
 type Dfm struct {
@@ -39,14 +42,23 @@ type Dfm struct {
 	Config Config
 	// The log function used by this dfm instance
 	Logger Logger
+	fs     afero.Fs
 }
 
-// NewDfm creates a new, empty dfm instance.
-// XXX - drop this function
-func NewDfm() Dfm {
-	return Dfm{
-		Config: NewDfmConfig(),
+// NewDfm creates a new dfm instance with the provided dfm dir.
+func NewDfm(dfmDir string) (*Dfm, error) {
+	return NewDfmFs(afero.NewOsFs(), dfmDir)
+}
+
+// NewDfmFs creates a new dfm instance using the provided filesystem driver and
+// df mdir.
+func NewDfmFs(fs afero.Fs, dfmDir string) (*Dfm, error) {
+	config := Config{fs: fs}
+	if err := config.SetDirectory(dfmDir); err != nil {
+		return nil, err
 	}
+	return &Dfm{fs: fs, Config: config}, nil
+
 }
 
 func (dfm *Dfm) log(operation, relative, repo string, reason error) {
@@ -63,7 +75,8 @@ func (dfm *Dfm) Init() error {
 
 // IsValidRepo returns true if the given name is a directory in the dfm dir.
 func (dfm *Dfm) IsValidRepo(repo string) bool {
-	stat, err := os.Stat(pathJoin(dfm.Config.path, repo))
+	fs := dfm.fs
+	stat, err := fs.Stat(pathJoin(dfm.Config.path, repo))
 	if err != nil {
 		return false
 	}
@@ -93,7 +106,8 @@ func (dfm *Dfm) TargetPath(relative string) string {
 
 // addFile is the internal implementation of AddFile and AddFiles. Does less
 // error checking.
-func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
+func (dfm *Dfm) addFile(filename string, repo string, link bool) error {
+	fs := dfm.fs
 	targetPath, err := filepath.Abs(filename)
 	if err != nil {
 		return WrapFileError(err, filename)
@@ -103,34 +117,34 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
 		return NewFileErrorf(targetPath, "not in target path (%s)", dfm.Config.targetPath)
 	}
 	relativePath := targetPath[len(dfm.Config.targetPath)+1:]
-	stat, err := os.Lstat(targetPath)
+	isRegular, err := IsRegularFile(fs, targetPath)
 	if err != nil {
 		return WrapFileError(err, filename)
-	}
-	if stat.IsDir() {
-		return NewFileError(filename, "directories are not supported")
-	}
-	if !stat.Mode().IsRegular() {
+	} else if !isRegular {
+		stat, _ := fs.Stat(targetPath)
+		if stat.IsDir() {
+			return NewFileError(filename, "directories are not supported")
+		}
 		return NewFileError(filename, "only regular files are supported")
 	}
 	repoPath := dfm.RepoPath(repo, relativePath)
-	if err := MakeDirAll(path.Dir(relativePath), dfm.Config.targetPath, dfm.RepoPath(repo, "")); err != nil {
+	if err := MakeDirAll(fs, path.Dir(relativePath), dfm.Config.targetPath, dfm.RepoPath(repo, "")); err != nil {
 		return WrapFileError(err, relativePath)
 	}
 	if link {
-		if err := MoveFile(targetPath, repoPath); err != nil {
+		if err := MoveFile(fs, targetPath, repoPath); err != nil {
 			return WrapFileError(err, repoPath)
 		}
-		if err := LinkFile(repoPath, targetPath); err != nil {
+		if err := LinkFile(fs, repoPath, targetPath); err != nil {
 			return WrapFileError(err, targetPath)
 		}
 	} else {
-		if err := CopyFile(targetPath, repoPath); err != nil {
+		if err := CopyFile(fs, targetPath, repoPath); err != nil {
 			return WrapFileError(err, repoPath)
 		}
 	}
 	dfm.log(OperationAdd, relativePath, repo, nil)
-	dfm.Config.manifest[relative] = true
+	dfm.Config.manifest[relativePath] = true
 	return nil
 }
 
@@ -163,7 +177,7 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 		for {
 			err = dfm.addFile(filename, repo, link)
 			if err != nil {
-				err = errorHandler(err.(FileError))
+				err = errorHandler(err.(*FileError))
 			}
 			if err != Retry {
 				break
@@ -235,11 +249,11 @@ func (dfm *Dfm) runSync(
 		for filename := range dfm.Config.manifest {
 			nextManifest[filename] = true
 		}
+		dfm.Config.manifest = nextManifest
 	} else {
-		// Autoclean
+		dfm.autoclean(nextManifest)
 	}
 
-	dfm.Config.manifest = nextManifest
 	if saveErr := dfm.Config.Save(); saveErr != nil {
 		return saveErr
 	}
@@ -250,7 +264,7 @@ func (dfm *Dfm) runSync(
 func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 	return dfm.runSync(errorHandler, OperationLink, func(s, d string) error {
 		// XXX - check if link is already correct
-		return LinkFile(s, d)
+		return LinkFile(dfm.fs, s, d)
 	})
 }
 
@@ -258,6 +272,31 @@ func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
 	return dfm.runSync(errorHandler, OperationCopy, func(s, d string) error {
 		// XXX - check if link is already correct
-		return CopyFile(s, d)
+		return CopyFile(dfm.fs, s, d)
 	})
+}
+
+// RemoveAll removes all synced files from the target directory.
+func (dfm *Dfm) RemoveAll() error {
+	nextManifest := map[string]bool{}
+	dfm.autoclean(nextManifest)
+	if saveErr := dfm.Config.Save(); saveErr != nil {
+		return saveErr
+	}
+	return nil
+}
+
+// autoclean will remove all synced files from the target directory except those
+// that are listed in nextManifest. The manifest will be updated but not saved.
+func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
+	for filename := range dfm.Config.manifest {
+		_, found := nextManifest[filename]
+		if !found {
+			err := RemoveFile(dfm.fs, dfm.TargetPath(filename))
+			dfm.log(OperationRemove, filename, "", err)
+			if err == nil {
+				delete(dfm.Config.manifest, filename)
+			}
+		}
+	}
 }

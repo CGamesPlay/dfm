@@ -1,12 +1,12 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 
 	"github.com/pelletier/go-toml"
+	"github.com/spf13/afero"
 )
 
 // TomlFilename is the filename where the dfm configuration can be found.
@@ -34,8 +34,18 @@ func configToManifest(config []string) map[string]bool {
 	return m
 }
 
+var defaultConfig = func() configFile {
+	home, _ := os.LookupEnv("HOME")
+	return configFile{
+		Repos:    []string{},
+		Target:   path.Clean(home),
+		Manifest: []string{},
+	}
+}()
+
 // Config is the main object that holds the configuration for dfm.
 type Config struct {
+	fs afero.Fs
 	// Main dfm directory
 	path string
 	// Target directory, normally ~/
@@ -46,27 +56,23 @@ type Config struct {
 	manifest map[string]bool
 }
 
-// NewDfmConfig creates an empty Config.
-func NewDfmConfig() Config {
-	home, _ := os.LookupEnv("HOME")
-	return Config{
-		targetPath: path.Clean(home),
-		manifest:   map[string]bool{},
-	}
-}
-
 // SetDirectory takes a directory with a dfm.toml file in it and loads that
 // configuration.
 func (config *Config) SetDirectory(dir string) error {
+	fs := config.fs
+	// Clear out all old settings when changing directory
+	*config = Config{fs: fs}
+	config.applyFile(defaultConfig)
+
 	absPath, err := filepath.Abs(dir)
 	if err != nil {
 		return err
 	}
 	config.path = absPath
-	if _, err := os.Stat(dir); err != nil {
+	if _, err := fs.Stat(dir); err != nil {
 		return err
 	}
-	bytes, err := ioutil.ReadFile(path.Join(dir, TomlFilename))
+	bytes, err := afero.ReadFile(fs, path.Join(dir, TomlFilename))
 	// Not having a config file is the same as having an empty config file, so
 	// don't fail if the file doesn't exist.
 	if err != nil && !os.IsNotExist(err) {
@@ -103,20 +109,15 @@ func (config *Config) applyFile(file configFile) {
 
 // Save writes a dfm.toml file to the config's path.
 func (config *Config) Save() error {
+	fs := config.fs
 	var file configFile
-	if config.repos != nil {
-		file.Repos = config.repos
-	}
-	if config.targetPath != "" {
-		file.Target = config.targetPath
-	}
-	if len(config.manifest) > 0 {
-		file.Manifest = manifestToConfig(config.manifest)
-	}
+	file.Repos = config.repos
+	file.Target = config.targetPath
+	file.Manifest = manifestToConfig(config.manifest)
 
 	bytes, err := toml.Marshal(file)
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(path.Join(config.path, TomlFilename), bytes, 0644)
+	return afero.WriteFile(fs, path.Join(config.path, TomlFilename), bytes, 0644)
 }
