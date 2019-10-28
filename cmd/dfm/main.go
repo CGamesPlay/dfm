@@ -14,6 +14,20 @@ var (
 	addWithCopy bool
 )
 
+func defaultLogger(operation, relative, repo string, reason error) {
+	switch operation {
+	case OperationLink, OperationCopy:
+		fmt.Printf("%s -> %s\n", pathJoin(repo, relative), dfm.Config.TargetPath(relative))
+	case OperationSkip:
+		if reason == nil {
+			reason = fmt.Errorf("already up to date")
+		}
+		fmt.Fprintf(os.Stderr, "skipping %s: %s\n", dfm.Config.TargetPath(relative), reason)
+	default:
+		fmt.Printf("%s %s\n", operation, relative)
+	}
+}
+
 func fatal(err error) {
 	fmt.Fprintf(os.Stderr, "%v\n", err.Error())
 	os.Exit(1)
@@ -106,6 +120,7 @@ func initConfig() {
 }
 
 func main() {
+	dfm.Logger = defaultLogger
 	cobra.OnInitialize(initConfig)
 
 	var rootCmd = &cobra.Command{

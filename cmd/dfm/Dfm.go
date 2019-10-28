@@ -8,10 +8,37 @@ import (
 	"strings"
 )
 
+// Dfm messages:
+// - added file (relative, repo)
+// - linked/copied file (relative, repo)
+// - removed file (relative)
+
+const (
+	// OperationAdd means a file was added to a repo.
+	OperationAdd = "added"
+	// OperationLink means a file was linked from a repo to the target.
+	OperationLink = "linked"
+	// OperationCopy means a file was copied from a repo to the target.
+	OperationCopy = "copied"
+	// OperationRemove means a file was removed from the target.
+	OperationRemove = "removed"
+	// OperationSkip means a file was not copied/linked to the target. The
+	// reason will be the original error, even though the ErrorHandler
+	// suppressed the error. If the error is nil, it's because the file is
+	// already synced.
+	OperationSkip = "skipped"
+)
+
+// Logger is the type of function that dfm calls whenever it performs a file
+// operation.
+type Logger func(operation string, relative string, repo string, reason error)
+
 // Dfm is the main controller class for API access to dfm
 type Dfm struct {
 	// The configuration used by this dfm instance
 	Config DfmConfig
+	// The log function used by this dfm instance
+	Logger Logger
 }
 
 // NewDfm creates a new, empty dfm instance.
@@ -19,6 +46,12 @@ type Dfm struct {
 func NewDfm() Dfm {
 	return Dfm{
 		Config: NewDfmConfig(),
+	}
+}
+
+func (dfm *Dfm) log(operation, relative, repo string, reason error) {
+	if dfm.Logger != nil {
+		dfm.Logger(operation, relative, repo, reason)
 	}
 }
 
@@ -33,8 +66,7 @@ func (dfm *Dfm) Init() error {
 func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
 	targetPath, err := filepath.Abs(filename)
 	if err != nil {
-		fatal(err)
-		return nil
+		return WrapFileError(err, filename)
 	}
 	// Verify file is under targetPath
 	if !strings.HasPrefix(targetPath, dfm.Config.targetPath+"/") {
@@ -67,6 +99,7 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
 			return WrapFileError(err, repoPath)
 		}
 	}
+	dfm.log(OperationAdd, relativePath, repo, nil)
 	dfm.Config.AddToManifest(repo, relativePath)
 	return nil
 }
@@ -122,7 +155,12 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 }
 
 // runSync is the internal workhorse for both CopyAll and LinkAll.
-func (dfm *Dfm) runSync(errorHandler ErrorHandler, handleFile func(s, d string) error) (err error) {
+func (dfm *Dfm) runSync(
+	errorHandler ErrorHandler,
+	operation string,
+	handleFile func(s, d string) error,
+) (err error) {
+	// Map relative -> repo. Later repos override earlier ones.
 	fileList := map[string]string{}
 	for _, repo := range dfm.Config.repos {
 		repoPath := dfm.Config.RepoPath(repo, "")
@@ -143,15 +181,21 @@ func (dfm *Dfm) runSync(errorHandler ErrorHandler, handleFile func(s, d string) 
 	for relative, repo := range fileList {
 		repoPath := dfm.Config.RepoPath(repo, relative)
 		targetPath := dfm.Config.TargetPath(relative)
+		fileOperation := operation
+		var originalError error
 		for {
-			err = handleFile(repoPath, targetPath)
-			if err != nil {
-				err = errorHandler(err.(FileError))
+			originalError = handleFile(repoPath, targetPath)
+			if originalError != nil {
+				err = errorHandler(WrapFileError(originalError, relative))
+				if err == nil {
+					fileOperation = OperationSkip
+				}
 			}
 			if err != Retry {
 				break
 			}
 		}
+		dfm.log(fileOperation, relative, repo, err)
 		if err != nil {
 			break
 		}
@@ -178,7 +222,7 @@ func (dfm *Dfm) runSync(errorHandler ErrorHandler, handleFile func(s, d string) 
 
 // LinkAll creates symlinks for files in all repos in the target directory.
 func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
-	return dfm.runSync(errorHandler, func(s, d string) error {
+	return dfm.runSync(errorHandler, OperationLink, func(s, d string) error {
 		// XXX - check if link is already correct
 		return LinkFile(s, d)
 	})
@@ -186,7 +230,7 @@ func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 
 // CopyAll copies files in all repos into the target directory.
 func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
-	return dfm.runSync(errorHandler, func(s, d string) error {
+	return dfm.runSync(errorHandler, OperationCopy, func(s, d string) error {
 		// XXX - check if link is already correct
 		return CopyFile(s, d)
 	})
