@@ -241,6 +241,32 @@ func TestSyncSkip(t *testing.T) {
 	}, logger.messages)
 }
 
+func TestAutoclean(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.fileA",
+	})
+	dfm := newDfm(t, fs)
+	initialSync(t, dfm)
+	var logger testLog
+	dfm.Logger = logger.log
+
+	fs.Rename(
+		"/home/test/dotfiles/files/.fileA",
+		"/home/test/dotfiles/files/.fileB",
+	)
+
+	handleFile := func(s, d string) error {
+		return nil
+	}
+	err := dfm.runSync(noErrorHandler, OperationLink, handleFile)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{".fileB": true}, dfm.Config.manifest)
+	require.Equal(t, []logMessage{
+		{OperationLink, ".fileB", "files", ""},
+		{OperationRemove, ".fileA", "", ""},
+	}, logger.messages)
+}
+
 func TestIsActiveRepo(t *testing.T) {
 	fs := newFs(emptyConfig, []string{})
 	dfm := newDfm(t, fs)

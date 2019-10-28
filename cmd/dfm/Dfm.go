@@ -235,24 +235,22 @@ func (dfm *Dfm) runSync(
 		for {
 			logErr = nil
 			rawErr := handleFile(repoPath, targetPath)
-			if rawErr == nil {
-				break
-			} else if rawErr == Skipped {
+			if rawErr == Skipped {
 				fileOperation = OperationSkip
-				break
+			} else if rawErr != nil {
+				wrappedErr, ok := rawErr.(*FileError)
+				if !ok {
+					wrappedErr = WrapFileError(rawErr, relative)
+				}
+				logErr = wrappedErr
+				newErr := errorHandler(wrappedErr)
+				if newErr == nil {
+					fileOperation = OperationSkip
+				} else if newErr == Retry {
+					continue
+				}
+				overallErr = newErr
 			}
-			wrappedErr, ok := rawErr.(*FileError)
-			if !ok {
-				wrappedErr = WrapFileError(rawErr, relative)
-			}
-			logErr = wrappedErr
-			newErr := errorHandler(wrappedErr)
-			if newErr == nil {
-				fileOperation = OperationSkip
-			} else if newErr == Retry {
-				continue
-			}
-			overallErr = newErr
 			break
 		}
 		dfm.log(fileOperation, relative, repo, logErr)
