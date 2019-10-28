@@ -36,7 +36,7 @@ type Logger func(operation string, relative string, repo string, reason error)
 // Dfm is the main controller class for API access to dfm
 type Dfm struct {
 	// The configuration used by this dfm instance
-	Config DfmConfig
+	Config Config
 	// The log function used by this dfm instance
 	Logger Logger
 }

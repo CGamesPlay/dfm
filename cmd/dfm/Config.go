@@ -34,8 +34,8 @@ func configToManifest(config []string) map[string]bool {
 	return m
 }
 
-// DfmConfig is the main object that holds the configuration for dfm.
-type DfmConfig struct {
+// Config is the main object that holds the configuration for dfm.
+type Config struct {
 	// Main dfm directory
 	path string
 	// Target directory, normally ~/
@@ -46,10 +46,10 @@ type DfmConfig struct {
 	manifest map[string]bool
 }
 
-// NewDfmConfig creates an empty DfmConfig.
-func NewDfmConfig() DfmConfig {
+// NewDfmConfig creates an empty Config.
+func NewDfmConfig() Config {
 	home, _ := os.LookupEnv("HOME")
-	return DfmConfig{
+	return Config{
 		targetPath: path.Clean(home),
 		manifest:   map[string]bool{},
 	}
@@ -57,7 +57,7 @@ func NewDfmConfig() DfmConfig {
 
 // SetDirectory takes a directory with a dfm.toml file in it and loads that
 // configuration.
-func (config *DfmConfig) SetDirectory(dir string) error {
+func (config *Config) SetDirectory(dir string) error {
 	absPath, err := filepath.Abs(dir)
 	if err != nil {
 		return err
@@ -89,7 +89,7 @@ func (config *DfmConfig) SetDirectory(dir string) error {
 
 // applyFile looks at all settings that are set in the config file and applies
 // them.
-func (config *DfmConfig) applyFile(file configFile) {
+func (config *Config) applyFile(file configFile) {
 	if file.Repos != nil {
 		config.repos = file.Repos
 	}
@@ -102,7 +102,7 @@ func (config *DfmConfig) applyFile(file configFile) {
 }
 
 // Save writes a dfm.toml file to the config's path.
-func (config *DfmConfig) Save() error {
+func (config *Config) Save() error {
 	var file configFile
 	if config.repos != nil {
 		file.Repos = config.repos
@@ -122,7 +122,7 @@ func (config *DfmConfig) Save() error {
 }
 
 // IsValidRepo returns true if the given name is a directory in the dfm dir.
-func (config *DfmConfig) IsValidRepo(repo string) bool {
+func (config *Config) IsValidRepo(repo string) bool {
 	stat, err := os.Stat(pathJoin(config.path, repo))
 	if err != nil {
 		return false
@@ -132,7 +132,7 @@ func (config *DfmConfig) IsValidRepo(repo string) bool {
 
 // HasRepo returns true if the given name is a repository that is currently
 // configured to be used.
-func (config *DfmConfig) HasRepo(repo string) bool {
+func (config *Config) HasRepo(repo string) bool {
 	for _, test := range config.repos {
 		if test == repo {
 			return true
@@ -142,16 +142,16 @@ func (config *DfmConfig) HasRepo(repo string) bool {
 }
 
 // RepoPath returns the path to the given file inside of the given repo.
-func (config *DfmConfig) RepoPath(repo string, relative string) string {
+func (config *Config) RepoPath(repo string, relative string) string {
 	return pathJoin(config.path, repo, relative)
 }
 
 // TargetPath returns the path to the given file inside of the target.
-func (config *DfmConfig) TargetPath(relative string) string {
+func (config *Config) TargetPath(relative string) string {
 	return pathJoin(config.targetPath, relative)
 }
 
 // AddToManifest registers a file in a given manifest
-func (config *DfmConfig) AddToManifest(repo string, relative string) {
+func (config *Config) AddToManifest(repo string, relative string) {
 	config.manifest[relative] = true
 }
