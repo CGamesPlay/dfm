@@ -61,6 +61,36 @@ func (dfm *Dfm) Init() error {
 	return dfm.Config.Save()
 }
 
+// IsValidRepo returns true if the given name is a directory in the dfm dir.
+func (dfm *Dfm) IsValidRepo(repo string) bool {
+	stat, err := os.Stat(pathJoin(dfm.Config.path, repo))
+	if err != nil {
+		return false
+	}
+	return stat.IsDir()
+}
+
+// HasRepo returns true if the given name is a repository that is currently
+// configured to be used.
+func (dfm *Dfm) HasRepo(repo string) bool {
+	for _, test := range dfm.Config.repos {
+		if test == repo {
+			return true
+		}
+	}
+	return false
+}
+
+// RepoPath returns the path to the given file inside of the given repo.
+func (dfm *Dfm) RepoPath(repo string, relative string) string {
+	return pathJoin(dfm.Config.path, repo, relative)
+}
+
+// TargetPath returns the path to the given file inside of the target.
+func (dfm *Dfm) TargetPath(relative string) string {
+	return pathJoin(dfm.Config.targetPath, relative)
+}
+
 // addFile is the internal implementation of AddFile and AddFiles. Does less
 // error checking.
 func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
@@ -83,8 +113,8 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
 	if !stat.Mode().IsRegular() {
 		return NewFileError(filename, "only regular files are supported")
 	}
-	repoPath := dfm.Config.RepoPath(repo, relativePath)
-	if err := MakeDirAll(path.Dir(relativePath), dfm.Config.targetPath, dfm.Config.RepoPath(repo, "")); err != nil {
+	repoPath := dfm.RepoPath(repo, relativePath)
+	if err := MakeDirAll(path.Dir(relativePath), dfm.Config.targetPath, dfm.RepoPath(repo, "")); err != nil {
 		return WrapFileError(err, relativePath)
 	}
 	if link {
@@ -100,14 +130,14 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) FileError {
 		}
 	}
 	dfm.log(OperationAdd, relativePath, repo, nil)
-	dfm.Config.AddToManifest(repo, relativePath)
+	dfm.Config.manifest[relative] = true
 	return nil
 }
 
 func (dfm *Dfm) assertIsActiveRepo(repo string) error {
-	if !dfm.Config.IsValidRepo(repo) {
-		return fmt.Errorf("repo %#v does not exist. To create it, run:\nmkdir %s", repo, dfm.Config.RepoPath(repo, ""))
-	} else if !dfm.Config.HasRepo(repo) {
+	if !dfm.IsValidRepo(repo) {
+		return fmt.Errorf("repo %#v does not exist. To create it, run:\nmkdir %s", repo, dfm.RepoPath(repo, ""))
+	} else if !dfm.HasRepo(repo) {
 		return fmt.Errorf("repo %#v is not active, cannot add files to it", repo)
 	}
 	return nil
@@ -128,10 +158,6 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 	if err = dfm.assertIsActiveRepo(repo); err != nil {
 		return err
 	}
-	// If we have to abort the add, we still need to update the manifest with
-	// all of the files that were successfully added.
-	defer func() {
-	}()
 
 	for _, filename := range filenames {
 		for {
@@ -163,7 +189,7 @@ func (dfm *Dfm) runSync(
 	// Map relative -> repo. Later repos override earlier ones.
 	fileList := map[string]string{}
 	for _, repo := range dfm.Config.repos {
-		repoPath := dfm.Config.RepoPath(repo, "")
+		repoPath := dfm.RepoPath(repo, "")
 		filepath.Walk(repoPath, func(path string, fi os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -179,8 +205,8 @@ func (dfm *Dfm) runSync(
 
 	nextManifest := make(map[string]bool, len(fileList))
 	for relative, repo := range fileList {
-		repoPath := dfm.Config.RepoPath(repo, relative)
-		targetPath := dfm.Config.TargetPath(relative)
+		repoPath := dfm.RepoPath(repo, relative)
+		targetPath := dfm.TargetPath(relative)
 		fileOperation := operation
 		var originalError error
 		for {

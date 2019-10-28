@@ -120,38 +120,3 @@ func (config *Config) Save() error {
 	}
 	return ioutil.WriteFile(path.Join(config.path, TomlFilename), bytes, 0644)
 }
-
-// IsValidRepo returns true if the given name is a directory in the dfm dir.
-func (config *Config) IsValidRepo(repo string) bool {
-	stat, err := os.Stat(pathJoin(config.path, repo))
-	if err != nil {
-		return false
-	}
-	return stat.IsDir()
-}
-
-// HasRepo returns true if the given name is a repository that is currently
-// configured to be used.
-func (config *Config) HasRepo(repo string) bool {
-	for _, test := range config.repos {
-		if test == repo {
-			return true
-		}
-	}
-	return false
-}
-
-// RepoPath returns the path to the given file inside of the given repo.
-func (config *Config) RepoPath(repo string, relative string) string {
-	return pathJoin(config.path, repo, relative)
-}
-
-// TargetPath returns the path to the given file inside of the target.
-func (config *Config) TargetPath(relative string) string {
-	return pathJoin(config.targetPath, relative)
-}
-
-// AddToManifest registers a file in a given manifest
-func (config *Config) AddToManifest(repo string, relative string) {
-	config.manifest[relative] = true
-}
