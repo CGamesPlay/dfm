@@ -16,10 +16,6 @@ target = "/home/test"
 
 const fileContent = "# config file"
 
-func noErrorHandler(err *FileError) error {
-	return err
-}
-
 func newFs(config string, files []string) afero.Fs {
 	fs := afero.NewMemMapFs()
 	fs.MkdirAll("/home/test/dotfiles/files", 0777)
@@ -307,4 +303,33 @@ target = "/home/test"
 `,
 		string(cfgBytes),
 	)
+}
+
+func TestDryRun(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.fileA",
+	})
+	dfm := newDfm(t, fs)
+	initialSync(t, dfm)
+	fs.Rename(
+		"/home/test/dotfiles/files/.fileA",
+		"/home/test/dotfiles/files/.fileB",
+	)
+	fs = afero.NewReadOnlyFs(fs)
+	dfm, err := NewDfmFs(fs, "/home/test/dotfiles")
+	require.NoError(t, err)
+	var logger testLog
+	dfm.Logger = logger.log
+	dfm.DryRun = true
+
+	handleFile := func(s, d string) error {
+		return nil
+	}
+	err = dfm.runSync(noErrorHandler, OperationLink, handleFile)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{".fileB": true}, dfm.Config.manifest)
+	require.Equal(t, []logMessage{
+		{OperationLink, ".fileB", "files", ""},
+		{OperationRemove, ".fileA", "", ""},
+	}, logger.messages)
 }

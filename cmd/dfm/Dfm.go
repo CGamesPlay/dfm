@@ -33,12 +33,18 @@ const (
 // operation.
 type Logger func(operation, relative, repo string, reason error)
 
+func noErrorHandler(err *FileError) error {
+	return err
+}
+
 // Dfm is the main controller class for API access to dfm
 type Dfm struct {
 	// The configuration used by this dfm instance
 	Config Config
 	// The log function used by this dfm instance
 	Logger Logger
+	// When set, don't actually do file operations, only log
+	DryRun bool
 	fs     afero.Fs
 }
 
@@ -64,10 +70,20 @@ func (dfm *Dfm) log(operation, relative, repo string, reason error) {
 	}
 }
 
+func (dfm *Dfm) saveConfig() error {
+	if dfm.DryRun {
+		return nil
+	}
+	if saveErr := dfm.Config.Save(); saveErr != nil {
+		return saveErr
+	}
+	return nil
+}
+
 // Init will prepare the configured directory for use with dfm, creating it if
 // necessary.
 func (dfm *Dfm) Init() error {
-	return dfm.Config.Save()
+	return dfm.saveConfig()
 }
 
 // IsValidRepo returns true if the given name is a directory in the dfm dir.
@@ -125,19 +141,23 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) error {
 		return NewFileError(filename, "only regular files are supported")
 	}
 	repoPath := dfm.RepoPath(repo, relativePath)
-	if err := MakeDirAll(fs, path.Dir(relativePath), dfm.Config.targetPath, dfm.RepoPath(repo, "")); err != nil {
-		return WrapFileError(err, relativePath)
-	}
-	if link {
-		if err := MoveFile(fs, targetPath, repoPath); err != nil {
-			return WrapFileError(err, repoPath)
-		}
-		if err := LinkFile(fs, repoPath, targetPath); err != nil {
-			return WrapFileError(err, targetPath)
-		}
+	if dfm.DryRun {
+		// do nothing
 	} else {
-		if err := CopyFile(fs, targetPath, repoPath); err != nil {
-			return WrapFileError(err, repoPath)
+		if err := MakeDirAll(fs, path.Dir(relativePath), dfm.Config.targetPath, dfm.RepoPath(repo, "")); err != nil {
+			return WrapFileError(err, relativePath)
+		}
+		if link {
+			if err := MoveFile(fs, targetPath, repoPath); err != nil {
+				return WrapFileError(err, repoPath)
+			}
+			if err := LinkFile(fs, repoPath, targetPath); err != nil {
+				return WrapFileError(err, targetPath)
+			}
+		} else {
+			if err := CopyFile(fs, targetPath, repoPath); err != nil {
+				return WrapFileError(err, repoPath)
+			}
 		}
 	}
 	dfm.log(OperationAdd, relativePath, repo, nil)
@@ -160,7 +180,13 @@ func (dfm *Dfm) AddFile(filename string, repo string, link bool) error {
 	if err := dfm.assertIsActiveRepo(repo); err != nil {
 		return err
 	}
-	return dfm.addFile(filename, repo, link)
+	if err := dfm.addFile(filename, repo, link); err != nil {
+		return err
+	}
+	if err := dfm.saveConfig(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // AddFiles will copy all of the provided files into dfm, optionally replacing
@@ -170,6 +196,7 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 		return err
 	}
 
+	// XXX - this doesn't work, and directories
 	for _, filename := range filenames {
 		for {
 			err = dfm.addFile(filename, repo, link)
@@ -189,7 +216,7 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 		}
 	}
 
-	if saveErr := dfm.Config.Save(); saveErr != nil {
+	if saveErr := dfm.saveConfig(); saveErr != nil {
 		return saveErr
 	}
 	return err
@@ -263,9 +290,9 @@ func (dfm *Dfm) runSync(
 	}
 
 	if overallErr != nil {
-		// Since there was an error, we will bypass the autoclean. This means
-		// all existing files plus all new files are presently synced. Merge the
-		// old and new manifests.
+		// Since there was an error, we will bypass the autoclean. This
+		// means all existing files plus all new files are presently synced.
+		// Merge the old and new manifests.
 		for filename := range dfm.Config.manifest {
 			nextManifest[filename] = true
 		}
@@ -274,7 +301,7 @@ func (dfm *Dfm) runSync(
 		dfm.autoclean(nextManifest)
 	}
 
-	if saveErr := dfm.Config.Save(); saveErr != nil {
+	if saveErr := dfm.saveConfig(); saveErr != nil {
 		return saveErr
 	}
 	return overallErr
@@ -284,6 +311,9 @@ func (dfm *Dfm) runSync(
 func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 	return dfm.runSync(errorHandler, OperationLink, func(s, d string) error {
 		// XXX - check if link is already correct
+		if dfm.DryRun {
+			return nil
+		}
 		return LinkFile(dfm.fs, s, d)
 	})
 }
@@ -291,7 +321,10 @@ func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 // CopyAll copies files in all repos into the target directory.
 func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
 	return dfm.runSync(errorHandler, OperationCopy, func(s, d string) error {
-		// XXX - check if link is already correct
+		// XXX - check if file is identical
+		if dfm.DryRun {
+			return nil
+		}
 		return CopyFile(dfm.fs, s, d)
 	})
 }
@@ -300,7 +333,7 @@ func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
 func (dfm *Dfm) RemoveAll() error {
 	nextManifest := map[string]bool{}
 	dfm.autoclean(nextManifest)
-	if saveErr := dfm.Config.Save(); saveErr != nil {
+	if saveErr := dfm.saveConfig(); saveErr != nil {
 		return saveErr
 	}
 	return nil
@@ -312,7 +345,10 @@ func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
 	for filename := range dfm.Config.manifest {
 		_, found := nextManifest[filename]
 		if !found {
-			err := RemoveFile(dfm.fs, dfm.TargetPath(filename))
+			var err error
+			if !dfm.DryRun {
+				err = RemoveFile(dfm.fs, dfm.TargetPath(filename))
+			}
 			dfm.log(OperationRemove, filename, "", err)
 			if err == nil {
 				delete(dfm.Config.manifest, filename)
