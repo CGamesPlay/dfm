@@ -147,7 +147,7 @@ func TestSync(t *testing.T) {
 	}, logger.messages)
 }
 
-func TestSyncError(t *testing.T) {
+func TestSyncErrorPartial(t *testing.T) {
 	fs := newFs(emptyConfig, []string{
 		"/home/test/dotfiles/files/.fileA",
 		"/home/test/dotfiles/files/.fileC",
@@ -167,7 +167,7 @@ func TestSyncError(t *testing.T) {
 		if err != nil {
 			return err
 		} else if exists {
-			return Skipped
+			return ErrNotNeeded
 		}
 		return LinkFile(dfm.fs, s, d)
 	}
@@ -177,8 +177,43 @@ func TestSyncError(t *testing.T) {
 	require.Equal(t, ".fileB: fake error", err.Error())
 	require.Equal(t, map[string]bool{".fileA": true, ".fileC": true}, dfm.Config.manifest)
 	require.Equal(t, []logMessage{
-		{OperationSkip, ".fileA", "files", ""},
-		{OperationLink, ".fileB", "files", ".fileB: fake error"},
+		{OperationSkip, ".fileA", "files", "already up to date"},
+	}, logger.messages)
+}
+
+func TestSyncIgnoreError(t *testing.T) {
+	fs := newFs(emptyConfig, []string{
+		"/home/test/dotfiles/files/.fileA",
+		"/home/test/dotfiles/files/.fileC",
+	})
+	dfm := newDfm(t, fs)
+	initialSync(t, dfm)
+	var logger testLog
+	dfm.Logger = logger.log
+
+	handleFile := func(s, d string) error {
+		if d == "/home/test/.fileB" {
+			return fmt.Errorf("fake error")
+		}
+		exists, err := afero.Exists(fs, d)
+		if err != nil {
+			return err
+		} else if exists {
+			return ErrNotNeeded
+		}
+		return LinkFile(dfm.fs, s, d)
+	}
+	errorHandler := func(err *FileError) error {
+		return nil
+	}
+	afero.WriteFile(fs, "/home/test/dotfiles/files/.fileB", []byte(fileContent), 0666)
+	err := dfm.runSync(errorHandler, OperationLink, handleFile)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{".fileA": true, ".fileC": true}, dfm.Config.manifest)
+	require.Equal(t, []logMessage{
+		{OperationSkip, ".fileA", "files", "already up to date"},
+		{OperationSkip, ".fileB", "files", ".fileB: fake error"},
+		{OperationSkip, ".fileC", "files", "already up to date"},
 	}, logger.messages)
 }
 
@@ -216,28 +251,6 @@ func TestSyncRetry(t *testing.T) {
 	require.Equal(t, timesCalled, 2)
 	require.Equal(t, []logMessage{
 		{OperationLink, ".fileA", "files", ""},
-	}, logger.messages)
-}
-
-func TestSyncSkip(t *testing.T) {
-	fs := newFs(emptyConfig, []string{
-		"/home/test/dotfiles/files/.fileA",
-	})
-	dfm := newDfm(t, fs)
-	var logger testLog
-	dfm.Logger = logger.log
-
-	handleFile := func(s, d string) (err error) {
-		return fmt.Errorf("can't handle file")
-	}
-	errorHandler := func(err *FileError) error {
-		return nil
-	}
-	err := dfm.runSync(errorHandler, OperationLink, handleFile)
-	require.NoError(t, err)
-	require.Equal(t, map[string]bool{".fileA": true}, dfm.Config.manifest)
-	require.Equal(t, []logMessage{
-		{OperationSkip, ".fileA", "files", ".fileA: can't handle file"},
 	}, logger.messages)
 }
 

@@ -19,9 +19,9 @@ type ErrorHandler func(err *FileError) error
 // being named ErrRetry.
 var Retry = errors.New("retry this file").(error)
 
-// Skipped is used internally to signify that a file was already up to date and
-// nothing needed to happen.
-var Skipped = errors.New("skipped").(error)
+// ErrNotNeeded means that the file was not updated because it was already up to
+// date. This is only used in logging.
+var ErrNotNeeded = errors.New("already up to date")
 
 // FileError represents any error dfm encountered while managing files.
 type FileError struct {

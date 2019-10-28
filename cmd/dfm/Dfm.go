@@ -231,21 +231,24 @@ func (dfm *Dfm) runSync(
 		repoPath := dfm.RepoPath(repo, relative)
 		targetPath := dfm.TargetPath(relative)
 		fileOperation := operation
-		var logErr error
+		var skipReason error
 		for {
-			logErr = nil
 			rawErr := handleFile(repoPath, targetPath)
-			if rawErr == Skipped {
-				fileOperation = OperationSkip
-			} else if rawErr != nil {
+			if rawErr == nil || rawErr == ErrNotNeeded {
+				nextManifest[relative] = true
+				if rawErr == ErrNotNeeded {
+					fileOperation = OperationSkip
+					skipReason = rawErr
+				}
+			} else {
 				wrappedErr, ok := rawErr.(*FileError)
 				if !ok {
 					wrappedErr = WrapFileError(rawErr, relative)
 				}
-				logErr = wrappedErr
 				newErr := errorHandler(wrappedErr)
 				if newErr == nil {
 					fileOperation = OperationSkip
+					skipReason = wrappedErr
 				} else if newErr == Retry {
 					continue
 				}
@@ -253,11 +256,10 @@ func (dfm *Dfm) runSync(
 			}
 			break
 		}
-		dfm.log(fileOperation, relative, repo, logErr)
 		if overallErr != nil {
 			break
 		}
-		nextManifest[relative] = true
+		dfm.log(fileOperation, relative, repo, skipReason)
 	}
 
 	if overallErr != nil {
