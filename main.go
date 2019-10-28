@@ -13,8 +13,10 @@ var (
 	dfm         *Dfm
 	cliOptions  configFile
 	dryRun      bool
+	force       bool
 	addToRepo   string
 	addWithCopy bool
+	failed      bool
 )
 
 func defaultLogger(operation, relative, repo string, reason error) {
@@ -22,13 +24,29 @@ func defaultLogger(operation, relative, repo string, reason error) {
 	case OperationLink, OperationCopy:
 		fmt.Printf("%s -> %s\n", pathJoin(repo, relative), dfm.TargetPath(relative))
 	case OperationSkip:
+		fileErr, isFileErr := reason.(*FileError)
 		if reason == nil {
 			reason = fmt.Errorf("already up to date")
+		} else if isFileErr && os.IsExist(fileErr.Cause()) {
+			reason = fmt.Errorf("file already exists")
 		}
 		fmt.Printf("skipping %s: %s\n", dfm.TargetPath(relative), reason)
 	default:
 		fmt.Printf("%s %s\n", operation, relative)
 	}
+}
+
+func errorHandler(fileError *FileError) error {
+	if force && os.IsExist(fileError.Cause()) {
+		linkErr, ok := fileError.Cause().(*os.LinkError)
+		if ok {
+			dest := linkErr.New
+			os.Remove(dest)
+			return Retry
+		}
+	}
+	failed = true
+	return nil
 }
 
 func fatal(err error) {
@@ -45,14 +63,7 @@ func runInit(cmd *cobra.Command, args []string) {
 }
 
 func runSync(method func(errorHandler ErrorHandler) error) {
-	failed := false
-	err := method(func(err *FileError) error {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err)
-			failed = true
-		}
-		return nil
-	})
+	err := method(errorHandler)
 	if err != nil {
 		fatal(err)
 		return
@@ -81,15 +92,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		return
 	}
 	failed := false
-	err := dfm.AddFiles(args, addToRepo, !addWithCopy, func(err *FileError) error {
-		if os.IsNotExist(err.Cause()) {
-			fmt.Fprintf(os.Stderr, "%s: no such file or directory\n", err.Filename)
-		} else {
-			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
-		}
-		failed = true
-		return nil
-	})
+	err := dfm.AddFiles(args, addToRepo, !addWithCopy, errorHandler)
 
 	if err != nil {
 		fatal(err)
@@ -119,6 +122,7 @@ func initConfig() {
 		fatal(err)
 		return
 	}
+	dfm.DryRun = dryRun
 	dfm.Logger = defaultLogger
 	if cliOptions.Target != "" {
 		absPath, err := filepath.Abs(cliOptions.Target)
@@ -136,12 +140,14 @@ func main() {
 
 	var rootCmd = &cobra.Command{
 		Use:     "dfm",
-		Version: "1.0.0",
+		Version: Version,
 		Long:    "Manages your dotfiles",
 	}
 	rootCmd.PersistentFlags().StringVarP(&dfmDir, "dfm-dir", "d", "", "directory where dfm repositories live")
-	rootCmd.PersistentFlags().StringArrayVarP(&cliOptions.Repos, "repos", "R", nil, "repositories to track")
+	rootCmd.PersistentFlags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
 	rootCmd.PersistentFlags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
+	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would happen, but don't actually modify files")
+	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "overwrite files that already exist")
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",

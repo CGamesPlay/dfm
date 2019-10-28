@@ -121,6 +121,28 @@ func CopyFile(fs afero.Fs, source, dest string) error {
 	}
 }
 
+// IsLinkedFile decides if dest is already a link to source
+func IsLinkedFile(fs afero.Fs, source, dest string) (bool, error) {
+	switch fs.(type) {
+	case *afero.OsFs:
+		stat, err := os.Lstat(dest)
+		if os.IsNotExist(err) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		} else if stat.Mode()&os.ModeSymlink == 0 {
+			return false, nil
+		}
+		target, err := os.Readlink(dest)
+		if err != nil || target != source {
+			return false, err
+		}
+		return true, nil
+	default:
+		return false, fmt.Errorf("unsupported afero fs")
+	}
+}
+
 // LinkFile creates a link at dest that points to source.
 func LinkFile(fs afero.Fs, source, dest string) error {
 	if !path.IsAbs(source) {
@@ -128,14 +150,6 @@ func LinkFile(fs afero.Fs, source, dest string) error {
 	}
 	switch fs.(type) {
 	case *afero.OsFs:
-		target, err := os.Readlink(dest)
-		if os.IsNotExist(err) {
-			// this is fine
-		} else if err == nil && target == source {
-			return ErrNotNeeded
-		} else if err != nil {
-			return err
-		}
 		return os.Symlink(source, dest)
 	case *afero.MemMapFs:
 		stat, _ := fs.Stat(dest)

@@ -3,7 +3,7 @@ set -e
 
 banner() {
   echo
-  echo "$1"
+  echo "# $1"
 }
 
 fail() {
@@ -13,6 +13,7 @@ fail() {
 
 cd "$(dirname "$0")"
 dfm() {
+  echo "\$ dfm" "$@"
   ../dfm -d dfmdir "$@"
 }
 
@@ -20,9 +21,13 @@ rm -rf dfmdir test_home
 mkdir -p dfmdir/files test_home
 echo 'config file' > dfmdir/files/.bashrc
 
-dfm -R files --target test_home init
+dfm --repos files --target test_home init
 
-banner "Testing initial sync"
+banner "Sync dry run"
+dfm link -n
+[ ! -e test_home/.bashrc ] || fail "dry-run modified files"
+
+banner "Initial sync"
 dfm link
 [ -L test_home/.bashrc ] || fail ".bashrc is not a symlink"
 
@@ -46,3 +51,5 @@ dfm add test_home/.config/fish/config.fish
 
 banner 'Cleaning up'
 dfm remove
+# XXX - fix this
+#[ ! -e test_home/.config ] || fail 'empty directory not cleaned'

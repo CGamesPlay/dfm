@@ -260,6 +260,7 @@ func (dfm *Dfm) runSync(
 		fileOperation := operation
 		var skipReason error
 		for {
+			// XXX - change this to (relative, repo)
 			rawErr := handleFile(repoPath, targetPath)
 			if rawErr == nil || rawErr == ErrNotNeeded {
 				nextManifest[relative] = true
@@ -310,8 +311,18 @@ func (dfm *Dfm) runSync(
 // LinkAll creates symlinks for files in all repos in the target directory.
 func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 	return dfm.runSync(errorHandler, OperationLink, func(s, d string) error {
-		if dfm.DryRun {
+		done, err := IsLinkedFile(dfm.fs, s, d)
+		if err != nil {
+			return err
+		} else if done {
+			return ErrNotNeeded
+		} else if dfm.DryRun {
 			return nil
+		}
+		relativePath := d[len(dfm.Config.targetPath)+1:]
+		repoPath := s[:len(s)-len(relativePath)-1]
+		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), dfm.Config.targetPath, repoPath); err != nil {
+			return err
 		}
 		return LinkFile(dfm.fs, s, d)
 	})
@@ -323,6 +334,11 @@ func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
 		// XXX - check if file is identical
 		if dfm.DryRun {
 			return nil
+		}
+		relativePath := d[len(dfm.Config.targetPath)+1:]
+		repoPath := s[:len(s)-len(relativePath)-1]
+		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), dfm.Config.targetPath, repoPath); err != nil {
+			return err
 		}
 		return CopyFile(dfm.fs, s, d)
 	})
