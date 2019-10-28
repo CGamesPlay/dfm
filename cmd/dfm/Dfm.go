@@ -310,7 +310,6 @@ func (dfm *Dfm) runSync(
 // LinkAll creates symlinks for files in all repos in the target directory.
 func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 	return dfm.runSync(errorHandler, OperationLink, func(s, d string) error {
-		// XXX - check if link is already correct
 		if dfm.DryRun {
 			return nil
 		}
@@ -348,6 +347,7 @@ func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
 			var err error
 			if !dfm.DryRun {
 				err = RemoveFile(dfm.fs, dfm.TargetPath(filename))
+				// XXX - remove empty directories
 			}
 			dfm.log(OperationRemove, filename, "", err)
 			if err == nil {

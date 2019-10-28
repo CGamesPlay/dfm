@@ -63,7 +63,7 @@ func MoveFile(fs afero.Fs, source, dest string) error {
 	}
 
 	switch fs.(type) {
-	case afero.OsFs:
+	case *afero.OsFs:
 		// This implementation shells out to mv to avoid cross-device failures
 		// that might happen with os.Rename.
 		cmd := exec.Command("mv", "-n", source, dest)
@@ -89,7 +89,7 @@ func MoveFile(fs afero.Fs, source, dest string) error {
 // CopyFile will copy the file from source to dest.
 func CopyFile(fs afero.Fs, source, dest string) error {
 	switch fs.(type) {
-	case afero.OsFs:
+	case *afero.OsFs:
 		// This implementation shells out to cp to avoid dealing with
 		// permissions, timestamps, extended attributes, etc.
 		cmd := exec.Command("cp", "-pn", source, dest)
@@ -127,7 +127,15 @@ func LinkFile(fs afero.Fs, source, dest string) error {
 		return fmt.Errorf("must use an absolute path for link source")
 	}
 	switch fs.(type) {
-	case afero.OsFs:
+	case *afero.OsFs:
+		target, err := os.Readlink(dest)
+		if os.IsNotExist(err) {
+			// this is fine
+		} else if err == nil && target == source {
+			return ErrNotNeeded
+		} else if err != nil {
+			return err
+		}
 		return os.Symlink(source, dest)
 	case *afero.MemMapFs:
 		stat, _ := fs.Stat(dest)

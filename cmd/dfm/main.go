@@ -3,13 +3,16 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	dfm         Dfm
+	dfmDir      string
+	dfm         *Dfm
 	cliOptions  configFile
+	dryRun      bool
 	addToRepo   string
 	addWithCopy bool
 )
@@ -22,7 +25,7 @@ func defaultLogger(operation, relative, repo string, reason error) {
 		if reason == nil {
 			reason = fmt.Errorf("already up to date")
 		}
-		fmt.Fprintf(os.Stderr, "skipping %s: %s\n", dfm.TargetPath(relative), reason)
+		fmt.Printf("skipping %s: %s\n", dfm.TargetPath(relative), reason)
 	default:
 		fmt.Printf("%s %s\n", operation, relative)
 	}
@@ -102,24 +105,33 @@ func runRemove(cmd *cobra.Command, args []string) {
 }
 
 func initConfig() {
-	if dfm.Config.path == "" {
+	var err error
+	if dfmDir == "" {
 		var exists bool
-		if dfm.Config.path, exists = os.LookupEnv("DFM_DIR"); !exists {
-			var err error
-			if dfm.Config.path, err = os.Getwd(); err != nil {
+		if dfmDir, exists = os.LookupEnv("DFM_DIR"); !exists {
+			if dfmDir, err = os.Getwd(); err != nil {
 				panic(err)
 			}
 		}
 	}
-	if err := dfm.Config.SetDirectory(dfm.Config.path); err != nil {
+	dfm, err = NewDfm(dfmDir)
+	if err != nil {
 		fatal(err)
 		return
+	}
+	dfm.Logger = defaultLogger
+	if cliOptions.Target != "" {
+		absPath, err := filepath.Abs(cliOptions.Target)
+		if err != nil {
+			fatal(err)
+			return
+		}
+		cliOptions.Target = absPath
 	}
 	dfm.Config.applyFile(cliOptions)
 }
 
 func main() {
-	dfm.Logger = defaultLogger
 	cobra.OnInitialize(initConfig)
 
 	var rootCmd = &cobra.Command{
@@ -127,9 +139,9 @@ func main() {
 		Version: "1.0.0",
 		Long:    "Manages your dotfiles",
 	}
-	rootCmd.PersistentFlags().StringVarP(&dfm.Config.path, "dfm-dir", "d", "", "directory where dfm repositories live")
+	rootCmd.PersistentFlags().StringVarP(&dfmDir, "dfm-dir", "d", "", "directory where dfm repositories live")
 	rootCmd.PersistentFlags().StringArrayVarP(&cliOptions.Repos, "repos", "R", nil, "repositories to track")
-	rootCmd.PersistentFlags().StringVar(&dfm.Config.targetPath, "target", dfm.Config.targetPath, "directory to sync files in")
+	rootCmd.PersistentFlags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
