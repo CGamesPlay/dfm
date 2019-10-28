@@ -14,9 +14,10 @@ fail() {
 }
 
 cd "$(dirname "$0")"
+export DFM_DIR=dfmdir
 dfm() {
   echo "\$ dfm" "$@"
-  ../dfm -d dfmdir "$@"
+  ../bin/dfm "$@"
 }
 
 rm -rf dfmdir test_home
