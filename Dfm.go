@@ -118,51 +118,55 @@ func (dfm *Dfm) TargetPath(relative string) string {
 }
 
 // addFile is the internal implementation of AddFile and AddFiles. Does less
-// error checking.
-func (dfm *Dfm) addFile(filename string, repo string, link bool) error {
+// error checking. Returns the relative path and an error value.
+func (dfm *Dfm) addFile(filename string, repo string, link bool) (string, error) {
 	fs := dfm.fs
 	targetPath, err := filepath.Abs(filename)
 	if err != nil {
-		return WrapFileError(err, filename)
+		return "", WrapFileError(err, filename)
 	}
 	// Verify file is under targetPath
 	if !strings.HasPrefix(targetPath, dfm.Config.targetPath+"/") {
-		return NewFileErrorf(targetPath, "not in target path (%s)", dfm.Config.targetPath)
+		return "", NewFileErrorf(targetPath, "not in target path (%s)", dfm.Config.targetPath)
 	}
 	relativePath := targetPath[len(dfm.Config.targetPath)+1:]
+	repoPath := dfm.RepoPath(repo, relativePath)
 	isRegular, err := IsRegularFile(fs, targetPath)
 	if err != nil {
-		return WrapFileError(err, filename)
+		return "", WrapFileError(err, filename)
 	} else if !isRegular {
 		stat, _ := fs.Stat(targetPath)
 		if stat.IsDir() {
-			return NewFileError(filename, "directories are not supported")
+			return "", NewFileError(filename, "directories are not supported")
 		}
-		return NewFileError(filename, "only regular files are supported")
+		if linked, err := IsLinkedFile(fs, repoPath, targetPath); linked || err != nil {
+			if err != nil {
+				return "", err
+			}
+			return "", ErrNotNeeded
+		}
+		return "", NewFileError(filename, "only regular files are supported")
 	}
-	repoPath := dfm.RepoPath(repo, relativePath)
 	if dfm.DryRun {
 		// do nothing
 	} else {
 		if err := MakeDirAll(fs, path.Dir(relativePath), dfm.Config.targetPath, dfm.RepoPath(repo, "")); err != nil {
-			return WrapFileError(err, relativePath)
+			return "", WrapFileError(err, relativePath)
 		}
 		if link {
 			if err := MoveFile(fs, targetPath, repoPath); err != nil {
-				return WrapFileError(err, repoPath)
+				return "", WrapFileError(err, repoPath)
 			}
 			if err := LinkFile(fs, repoPath, targetPath); err != nil {
-				return WrapFileError(err, targetPath)
+				return "", WrapFileError(err, targetPath)
 			}
 		} else {
 			if err := CopyFile(fs, targetPath, repoPath); err != nil {
-				return WrapFileError(err, repoPath)
+				return "", WrapFileError(err, repoPath)
 			}
 		}
 	}
-	dfm.log(OperationAdd, relativePath, repo, nil)
-	dfm.Config.manifest[relativePath] = true
-	return nil
+	return relativePath, nil
 }
 
 func (dfm *Dfm) assertIsActiveRepo(repo string) error {
@@ -177,49 +181,43 @@ func (dfm *Dfm) assertIsActiveRepo(repo string) error {
 // AddFile will copy the provided file into dfm, optionally replacing the
 // original with a symlink to the imported file.
 func (dfm *Dfm) AddFile(filename string, repo string, link bool) error {
-	if err := dfm.assertIsActiveRepo(repo); err != nil {
-		return err
-	}
-	if err := dfm.addFile(filename, repo, link); err != nil {
-		return err
-	}
-	if err := dfm.saveConfig(); err != nil {
-		return err
-	}
-	return nil
+	return dfm.AddFiles([]string{filename}, repo, link, noErrorHandler)
 }
 
 // AddFiles will copy all of the provided files into dfm, optionally replacing
 // the originals with symlinks to the imported ones.
-func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandler ErrorHandler) (err error) {
-	if err = dfm.assertIsActiveRepo(repo); err != nil {
+func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandler ErrorHandler) (overallErr error) {
+	if err := dfm.assertIsActiveRepo(repo); err != nil {
 		return err
 	}
 
 	// XXX - this doesn't work, and directories
 	for _, filename := range filenames {
-		for {
-			err = dfm.addFile(filename, repo, link)
-			if err != nil {
-				fileErr, ok := err.(*FileError)
-				if !ok {
-					fileErr = WrapFileError(err, filename)
-				}
-				err = errorHandler(fileErr)
+		var relativePath string
+		fileOperation := OperationAdd
+		skip, abort, fileErr := processWithRetry(errorHandler, func() *FileError {
+			var rawErr error
+			relativePath, rawErr = dfm.addFile(filename, repo, link)
+			if rawErr == nil {
+				return nil
 			}
-			if err != Retry {
-				break
-			}
-		}
-		if err != nil {
+			return WrapFileError(rawErr, filename)
+		})
+		if abort {
+			overallErr = fileErr
 			break
+		} else if skip {
+			fileOperation = OperationSkip
+		} else {
+			dfm.Config.manifest[relativePath] = true
 		}
+		dfm.log(fileOperation, filename, repo, fileErr)
 	}
 
 	if saveErr := dfm.saveConfig(); saveErr != nil {
 		return saveErr
 	}
-	return err
+	return overallErr
 }
 
 func processWithRetry(
