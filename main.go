@@ -26,11 +26,8 @@ func defaultLogger(operation, relative, repo string, reason error) {
 	case OperationLink, OperationCopy:
 		fmt.Printf("%s -> %s\n", pathJoin(repo, relative), dfm.TargetPath(relative))
 	case OperationSkip:
-		if reason == nil {
-			reason = ErrNotNeeded
-			if !verbose {
-				return
-			}
+		if IsNotNeeded(reason) && !verbose {
+			return
 		} else if fileErr, ok := reason.(*FileError); ok {
 			reason = fmt.Errorf(fileErr.Message)
 		}
@@ -102,7 +99,6 @@ func runAdd(cmd *cobra.Command, args []string) {
 		fatal(fmt.Errorf("no repos are configured and no repo was specifed"))
 		return
 	}
-	failed := false
 	err := dfm.AddFiles(args, addToRepo, !addWithCopy, errorHandler)
 
 	if err != nil {

@@ -24,8 +24,7 @@ const (
 	OperationRemove = "removed"
 	// OperationSkip means a file was not copied/linked to the target. The
 	// reason will be the original error, even though the ErrorHandler
-	// suppressed the error. If the error is nil, it's because the file is
-	// already synced.
+	// suppressed the error.
 	OperationSkip = "skipped"
 )
 
@@ -222,6 +221,26 @@ func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandle
 	return err
 }
 
+func processWithRetry(
+	errorHandler ErrorHandler,
+	process func() *FileError,
+) (skipped, aborted bool, reason error) {
+retry:
+	rawErr := process()
+	if rawErr == nil {
+		return false, false, nil
+	} else if IsNotNeeded(rawErr) {
+		return true, false, rawErr
+	}
+	newErr := errorHandler(rawErr)
+	if newErr == nil {
+		return true, false, rawErr
+	} else if newErr == Retry {
+		goto retry
+	}
+	return false, true, newErr
+}
+
 // runSync is the internal workhorse for both CopyAll and LinkAll.
 func (dfm *Dfm) runSync(
 	errorHandler ErrorHandler,
@@ -261,35 +280,20 @@ func (dfm *Dfm) runSync(
 		repoPath := dfm.RepoPath(repo, relative)
 		targetPath := dfm.TargetPath(relative)
 		fileOperation := operation
-		var skipReason error
-		for {
-			// XXX - change this to (relative, repo)
+		skip, abort, fileErr := processWithRetry(errorHandler, func() *FileError {
 			rawErr := handleFile(repoPath, targetPath)
-			if rawErr == nil || rawErr == ErrNotNeeded {
-				if rawErr == ErrNotNeeded {
-					fileOperation = OperationSkip
-					skipReason = nil
-				}
-			} else {
-				wrappedErr, ok := rawErr.(*FileError)
-				if !ok {
-					wrappedErr = WrapFileError(rawErr, relative)
-				}
-				newErr := errorHandler(wrappedErr)
-				if newErr == nil {
-					fileOperation = OperationSkip
-					skipReason = wrappedErr
-				} else if newErr == Retry {
-					continue
-				}
-				overallErr = newErr
+			if rawErr == nil {
+				return nil
 			}
+			return WrapFileError(rawErr, relative)
+		})
+		if abort {
+			overallErr = fileErr
 			break
+		} else if skip {
+			fileOperation = OperationSkip
 		}
-		if overallErr != nil {
-			break
-		}
-		dfm.log(fileOperation, relative, repo, skipReason)
+		dfm.log(fileOperation, relative, repo, fileErr)
 	}
 
 	if overallErr != nil {

@@ -173,7 +173,7 @@ func TestSyncErrorPartial(t *testing.T) {
 	require.Equal(t, ".fileB: fake error", err.Error())
 	require.Equal(t, map[string]bool{".fileA": true, ".fileB": true, ".fileC": true}, dfm.Config.manifest)
 	require.Equal(t, []logMessage{
-		{OperationSkip, ".fileA", "files", ""},
+		{OperationSkip, ".fileA", "files", ".fileA: already up to date"},
 	}, logger.messages)
 }
 
@@ -207,9 +207,9 @@ func TestSyncIgnoreError(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string]bool{".fileA": true, ".fileB": true, ".fileC": true}, dfm.Config.manifest)
 	require.Equal(t, []logMessage{
-		{OperationSkip, ".fileA", "files", ""},
+		{OperationSkip, ".fileA", "files", ".fileA: already up to date"},
 		{OperationSkip, ".fileB", "files", ".fileB: fake error"},
-		{OperationSkip, ".fileC", "files", ""},
+		{OperationSkip, ".fileC", "files", ".fileC: already up to date"},
 	}, logger.messages)
 }
 

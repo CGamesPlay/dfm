@@ -24,6 +24,19 @@ var Retry = errors.New("retry this file").(error)
 // date. This is only used in logging.
 var ErrNotNeeded = errors.New("already up to date")
 
+// IsNotNeeded checks if the given error is ErrNotNeeded, after unwrapping
+func IsNotNeeded(err error) bool {
+	if err == ErrNotNeeded {
+		return true
+	}
+	if fileErr, ok := err.(*FileError); ok {
+		if fileErr.Cause() == ErrNotNeeded {
+			return true
+		}
+	}
+	return false
+}
+
 // FileError represents any error dfm encountered while managing files.
 type FileError struct {
 	Message  string
@@ -51,6 +64,9 @@ func NewFileErrorf(filename string, message string, args ...interface{}) *FileEr
 // WrapFileError takes an existing error and creates a new FileError for the
 // given file.
 func WrapFileError(cause error, filename string) *FileError {
+	if fileErr, ok := cause.(*FileError); ok {
+		return fileErr
+	}
 	var message string
 	switch err := cause.(type) {
 	case *os.PathError:
