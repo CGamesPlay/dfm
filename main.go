@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mitchellh/go-wordwrap"
 	"github.com/spf13/cobra"
 )
 
@@ -151,22 +152,37 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:     "dfm",
 		Version: Version,
-		Long:    "Manages your dotfiles",
+		Long: wordwrap.WrapString(`dfm is a tool to manage repositories of configuration files. A simple workflow for dfm might look like this:
+
+  mkdir -p ~/dotfiles/files; cd ~/dotfiles
+  dfm init . --repos files
+  dfm add ~/.bashrc
+
+Now ~/dotfiles can be tracked in source control, and to install on another machine you would use:
+
+  cd ~/dotfiles
+  dfm init . --repos files
+  dfm link
+
+Note that .dfm.toml is a per-machine configuration and should not be tracked in source control.`, 80),
 	}
 	rootCmd.PersistentFlags().StringVarP(&dfmDir, "dfm-dir", "d", "", "directory where dfm repositories live")
-	rootCmd.PersistentFlags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
-	rootCmd.PersistentFlags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "output every file, even unchanged ones")
 	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would happen, but don't actually modify files")
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "overwrite files that already exist")
 
-	rootCmd.AddCommand(&cobra.Command{
+	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize the dfm directory",
-		Long:  "Create a dfm.toml file in the dfm directory with the default configuration. Use --dfm-dir to specify the dfm directory.",
-		Args:  cobra.NoArgs,
-		Run:   runInit,
-	})
+		Long: wordwrap.WrapString(`Initialize a directory to be used with dfm by creating the .dfm.toml file there.
+
+Specifying --repos and --target will allow you to configure which repos are used and where the files should be stored. It is safe to run dfm init on an already-initialized dfm directory, to change the repos that are being used.`, 80),
+		Args: cobra.NoArgs,
+		Run:  runInit,
+	}
+	initCmd.Flags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
+	initCmd.Flags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
+	rootCmd.AddCommand(initCmd)
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "link",
@@ -185,9 +201,11 @@ func main() {
 	addCmd := &cobra.Command{
 		Use:   "add",
 		Short: "Begin tracking files",
-		Long:  "Copy the given files into the repository and replace the originals with links to the tracked files.",
-		Args:  cobra.MinimumNArgs(1),
-		Run:   runAdd,
+		Long: wordwrap.WrapString(`Copy the given files into the repository and replace the originals with links to the tracked files.
+
+If no repo is specified in the command, the repo that is listed last will be used.`, 80),
+		Args: cobra.MinimumNArgs(1),
+		Run:  runAdd,
 	}
 	addCmd.Flags().StringVarP(&addToRepo, "repo", "r", "", "repository to add the file to")
 	addCmd.Flags().BoolVar(&addWithCopy, "copy", false, "copy the file instead of moving and creating a link")
