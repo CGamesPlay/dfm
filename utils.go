@@ -54,6 +54,26 @@ func MakeDirAll(fs afero.Fs, relative, source, dest string) error {
 	return fs.MkdirAll(path.Join(dest, relative), 0777)
 }
 
+// CleanDirectories will remove all empty directories in the given path,
+// stopping once it hits the given path.
+func CleanDirectories(fs afero.Fs, emptyDir, root string) error {
+	for len(emptyDir) > len(root) && emptyDir[:len(root)] == root {
+		entries, err := afero.ReadDir(fs, emptyDir)
+		if err != nil {
+			return err
+		}
+		if len(entries) > 0 {
+			return nil
+		}
+		err = fs.Remove(emptyDir)
+		if err != nil {
+			return err
+		}
+		emptyDir = path.Dir(emptyDir)
+	}
+	return nil
+}
+
 // MoveFile will move the file from source to dest, failing if the file already
 // exists.
 func MoveFile(fs afero.Fs, source, dest string) error {

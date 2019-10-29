@@ -62,7 +62,6 @@ dfm copy --force
 
 banner 'Cleaning up'
 dfm remove
-# XXX - fix this
-#[ ! -e test_home/.config ] || fail 'empty directory not cleaned'
+[ ! -e test_home/.config ] || fail 'empty directory not cleaned'
 
 rm -rf dfmdir test_home

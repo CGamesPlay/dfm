@@ -392,7 +392,9 @@ func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
 		var err error
 		if !dfm.DryRun {
 			err = RemoveFile(dfm.fs, dfm.TargetPath(filename))
-			// XXX - remove empty directories
+			if err == nil {
+				err = CleanDirectories(dfm.fs, path.Dir(dfm.TargetPath(filename)), dfm.Config.targetPath)
+			}
 		}
 		dfm.log(OperationRemove, filename, "", err)
 		if err == nil {

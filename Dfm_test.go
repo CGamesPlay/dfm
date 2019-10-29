@@ -252,7 +252,7 @@ func TestSyncRetry(t *testing.T) {
 
 func TestAutoclean(t *testing.T) {
 	fs := newFs(emptyConfig, []string{
-		"/home/test/dotfiles/files/.fileA",
+		"/home/test/dotfiles/files/.config/fileA",
 	})
 	dfm := newDfm(t, fs)
 	initialSync(t, dfm)
@@ -260,7 +260,7 @@ func TestAutoclean(t *testing.T) {
 	dfm.Logger = logger.log
 
 	fs.Rename(
-		"/home/test/dotfiles/files/.fileA",
+		"/home/test/dotfiles/files/.config/fileA",
 		"/home/test/dotfiles/files/.fileB",
 	)
 
@@ -272,7 +272,7 @@ func TestAutoclean(t *testing.T) {
 	require.Equal(t, map[string]bool{".fileB": true}, dfm.Config.manifest)
 	require.Equal(t, []logMessage{
 		{OperationLink, ".fileB", "files", ""},
-		{OperationRemove, ".fileA", "", ""},
+		{OperationRemove, ".config/fileA", "", ""},
 	}, logger.messages)
 }
 
