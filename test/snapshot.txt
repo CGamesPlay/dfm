@@ -15,11 +15,11 @@ skipping ./test_home/.bashrc: already up to date
 
 # Adding a new config file
 $ dfm link
-files/.zshrc -> ./test_home/.zshrc
+files/.ssh/config -> ./test_home/.ssh/config
 
 # Removing a config file
 $ dfm link
-removed .zshrc
+removed .ssh/config
 
 # Importing with add
 $ dfm add test_home/.config

@@ -38,15 +38,16 @@ banner "Everything is up to date"
 dfm link -v
 
 banner "Adding a new config file"
-echo 'config file' > dfmdir/files/.zshrc
+mkdir -p dfmdir/files/.ssh
+echo 'config file' > dfmdir/files/.ssh/config
 dfm link
 [ -L test_home/.bashrc ] || fail '.bashrc was removed'
-[ -L test_home/.zshrc ] || fail '.zshrc was not created'
+[ -L test_home/.ssh/config ] || fail '.ssh/config was not created'
 
 banner "Removing a config file"
-rm dfmdir/files/.zshrc
+rm -rf dfmdir/files/.ssh
 dfm link
-[ ! -e test_home/.zshrc ] || fail '.zshrc was not removed'
+[ ! -e test_home/.ssh/config ] || fail '.ssh/config was not removed'
 
 banner "Importing with add"
 mkdir -p test_home/.config/fish

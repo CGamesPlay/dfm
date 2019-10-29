@@ -344,7 +344,7 @@ func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
 		}
 		relativePath := d[len(dfm.Config.targetPath)+1:]
 		repoPath := s[:len(s)-len(relativePath)-1]
-		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), dfm.Config.targetPath, repoPath); err != nil {
+		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
 			return err
 		}
 		return LinkFile(dfm.fs, s, d)
@@ -360,7 +360,7 @@ func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
 		}
 		relativePath := d[len(dfm.Config.targetPath)+1:]
 		repoPath := s[:len(s)-len(relativePath)-1]
-		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), dfm.Config.targetPath, repoPath); err != nil {
+		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
 			return err
 		}
 		return CopyFile(dfm.fs, s, d)
