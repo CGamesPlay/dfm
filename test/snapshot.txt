@@ -22,7 +22,7 @@ $ dfm link
 removed .zshrc
 
 # Importing with add
-$ dfm add test_home/.config/fish/config.fish
+$ dfm add test_home/.config
 added test_home/.config/fish/config.fish
 
 # Exporting files with copy

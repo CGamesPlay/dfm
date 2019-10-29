@@ -51,7 +51,7 @@ dfm link
 banner "Importing with add"
 mkdir -p test_home/.config/fish
 echo 'config file' > test_home/.config/fish/config.fish
-dfm add test_home/.config/fish/config.fish
+dfm add test_home/.config
 [ -L test_home/.config/fish/config.fish ] || fail 'config.fish was not replaced by a link'
 [ -f dfmdir/files/.config/fish/config.fish ] || fail 'config.fish is not a regular file'
 

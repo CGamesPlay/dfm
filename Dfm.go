@@ -135,10 +135,6 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) (string, error)
 	if err != nil {
 		return "", WrapFileError(err, filename)
 	} else if !isRegular {
-		stat, _ := fs.Stat(targetPath)
-		if stat.IsDir() {
-			return "", NewFileError(filename, "directories are not supported")
-		}
 		if linked, err := IsLinkedFile(fs, repoPath, targetPath); linked || err != nil {
 			if err != nil {
 				return "", err
@@ -186,12 +182,34 @@ func (dfm *Dfm) AddFile(filename string, repo string, link bool) error {
 
 // AddFiles will copy all of the provided files into dfm, optionally replacing
 // the originals with symlinks to the imported ones.
-func (dfm *Dfm) AddFiles(filenames []string, repo string, link bool, errorHandler ErrorHandler) (overallErr error) {
+func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorHandler ErrorHandler) (overallErr error) {
 	if err := dfm.assertIsActiveRepo(repo); err != nil {
 		return err
 	}
 
-	// XXX - this doesn't work, and directories
+	filenames := make([]string, 0, len(inputFilenames))
+	for _, inputFilename := range inputFilenames {
+		stat, _ := dfm.fs.Stat(inputFilename)
+		if stat.IsDir() {
+			err := afero.Walk(dfm.fs, inputFilename, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if !info.IsDir() {
+					filenames = append(filenames, path)
+				}
+				return nil
+			})
+			if err != nil {
+				// If an error occurs while listing out files, just abort the
+				// add.
+				return err
+			}
+		} else {
+			filenames = append(filenames, inputFilename)
+		}
+	}
+
 	for _, filename := range filenames {
 		var relativePath string
 		fileOperation := OperationAdd
