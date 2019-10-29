@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cevaris/ordered_map"
@@ -363,18 +364,23 @@ func (dfm *Dfm) RemoveAll() error {
 // autoclean will remove all synced files from the target directory except those
 // that are listed in nextManifest. The manifest will be updated but not saved.
 func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
+	var toRemove []string
 	for filename := range dfm.Config.manifest {
 		_, found := nextManifest[filename]
 		if !found {
-			var err error
-			if !dfm.DryRun {
-				err = RemoveFile(dfm.fs, dfm.TargetPath(filename))
-				// XXX - remove empty directories
-			}
-			dfm.log(OperationRemove, filename, "", err)
-			if err == nil {
-				delete(dfm.Config.manifest, filename)
-			}
+			toRemove = append(toRemove, filename)
+		}
+	}
+	sort.Strings(toRemove)
+	for _, filename := range toRemove {
+		var err error
+		if !dfm.DryRun {
+			err = RemoveFile(dfm.fs, dfm.TargetPath(filename))
+			// XXX - remove empty directories
+		}
+		dfm.log(OperationRemove, filename, "", err)
+		if err == nil {
+			delete(dfm.Config.manifest, filename)
 		}
 	}
 	for filename := range nextManifest {
