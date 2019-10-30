@@ -10,6 +10,8 @@ dfm is a generic file syncing utility to keep two directories in sync, using sym
 - Overlay multiple repositories on top of each other.
 - Automatically clean up removed files.
 
+[![asciicast](https://asciinema.org/a/TI04jNkcDAlO7WnWkYPlevSAR.svg)](https://asciinema.org/a/TI04jNkcDAlO7WnWkYPlevSAR)
+
 ## Quick Start
 
 To get started with dfm from a blank slate (to see how it works), try these commands:
@@ -37,7 +39,18 @@ dfm link
 
 ## Usage Guide
 
-This is the recommended workflow to effectively use dfm with your dotfiles.
+dfm includes a help command that explains all available options. Run one of these to learn more:
+
+```bash
+dfm help
+dfm help init
+dfm help add
+dfm help link
+```
+
+### Recommended workflow
+
+This is the recommended workflow to effectively use dfm with your dotfiles. Look at [CGamesPlay/dotfiles](https://github.com/CGamesPlay/dotfiles) for a working example of this workflow.
 
 1. Write a bootstrap script that installs dfm. I recommend downloading the binary from github via curl, but `go get` might be an option if you prefer. The single binary can be placed anywhere; I prefer to place it in `~/dotfiles/bin`.
 2. Configure the dfm directory. It's best to make a shell function: `function dfm() { ~/dotfiles/bin/dfm --dfm-dir=~/dotfiles "$@" }`  If you don't mind global configuration, you can also place dfm anywhere in your `$PATH` and set a global environment variable `DFM_DIR=~/dotfiles`. 
@@ -93,9 +106,25 @@ dfm -d ~/vhosts link
 
 ## Development
 
+dfm is built with go, so make sure you have a go compiler set up on your system. The project is a go module, so the other dependencies will be installed automatically when you build the software.
+
+To make and run locally:
+
+```
+make
+./bin/dfm
+```
+
 To test:
 
 ```bash
 make test
 ```
 
+## Prior art
+
+There are lots of other dotfile managers out there, which dfm draws inspiration from:
+
+- [bonclay](https://github.com/talal/bonclay) is similar in scope to dfm (built for dotfiles but applicable to general file syncing). It supports renaming config files, but requires managing a configuration file to do so. The automatic cleanup is limited to scanning the directory for broken symlinks.
+- [homemaker](https://github.com/FooSoft/homemaker) has many of the same goals as dfm, but requires a configuration file. The tasks functionality is potentially useful, and you could replace homemaker's `links` functionality with a task to run `dfm`.
+- There's plenty of other options on [Github does dotfiles](https://dotfiles.github.io), but either require too many software dependencies, are too tied to specific workflows, or require too much configuration/learning to adopt easily.
