@@ -160,12 +160,16 @@ Now ~/dotfiles can be tracked in source control, and to install on another machi
   dfm init . --repos files
   dfm link
 
-Note that .dfm.toml is a per-machine configuration and should not be tracked in source control.`, 80),
+Note that .dfm.toml is a per-machine configuration and should not be tracked in source control.
+
+`, 80),
 	}
 	rootCmd.PersistentFlags().StringVarP(&dfmDir, "dfm-dir", "d", "", "directory where dfm repositories live")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "output every file, even unchanged ones")
 	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would happen, but don't actually modify files")
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "overwrite files that already exist")
+
+	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n" + CopyrightString + "\n")
 
 	initCmd := &cobra.Command{
 		Use:   "init",
@@ -173,8 +177,9 @@ Note that .dfm.toml is a per-machine configuration and should not be tracked in 
 		Long: wordwrap.WrapString(`Initialize a directory to be used with dfm by creating the .dfm.toml file there.
 
 Specifying --repos and --target will allow you to configure which repos are used and where the files should be stored. It is safe to run dfm init on an already-initialized dfm directory, to change the repos that are being used.`, 80),
-		Args: cobra.NoArgs,
-		Run:  runInit,
+		Example: `  dfm init --repos files ~/dotfiles`,
+		Args:    cobra.NoArgs,
+		Run:     runInit,
 	}
 	initCmd.Flags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
 	initCmd.Flags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
@@ -195,8 +200,9 @@ Specifying --repos and --target will allow you to configure which repos are used
 	})
 
 	addCmd := &cobra.Command{
-		Use:   "add",
-		Short: "Begin tracking files",
+		Use:     "add [files]",
+		Aliases: []string{"import"},
+		Short:   "Begin tracking files",
 		Long: wordwrap.WrapString(`Copy the given files into the repository and replace the originals with links to the tracked files.
 
 If no repo is specified in the command, the repo that is listed last will be used.`, 80),
