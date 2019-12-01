@@ -96,7 +96,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		addToRepo = dfm.Config.repos[0]
 	}
 	if addToRepo == "" {
-		fatal(fmt.Errorf("no repos are configured and no repo was specifed"))
+		fatal(fmt.Errorf("no repos are configured and no repo was specified"))
 		return
 	}
 	err := dfm.AddFiles(args, addToRepo, !addWithCopy, errorHandler)
