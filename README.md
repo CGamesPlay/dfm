@@ -10,7 +10,7 @@ dfm is a generic file syncing utility to keep two directories in sync, using sym
 - Overlay multiple repositories on top of each other.
 - Automatically clean up removed files.
 
-[![asciicast](https://asciinema.org/a/TI04jNkcDAlO7WnWkYPlevSAR.svg)](https://asciinema.org/a/TI04jNkcDAlO7WnWkYPlevSAR)
+[![asciicast](https://asciinema.org/a/284642.svg)](https://asciinema.org/a/284642)
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ When you are setting up a new machine, assuming you have already created `~/dotf
 ```bash
 export DFM_DIR=~/dotfiles
 dfm init --repos files
-dfm link -n
+dfm link --dry-run
 dfm link
 ```
 
