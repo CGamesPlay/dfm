@@ -393,7 +393,7 @@ func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
 // manifest.
 func (dfm *Dfm) RemoveFiles(inputFilenames []string) error {
 	nextManifest := make(map[string]bool, len(dfm.Config.manifest))
-	for filename := range nextManifest {
+	for filename := range dfm.Config.manifest {
 		nextManifest[filename] = true
 	}
 	for _, filename := range inputFilenames {

@@ -55,22 +55,16 @@ func populateFileList(
 // IsRegularFile will return true if the given file is a regular file (symlinks
 // not allowed)
 func IsRegularFile(fs afero.Fs, path string) (bool, error) {
-	var (
-		stat os.FileInfo
-		err  error
-	)
+	var stat os.FileInfo
+	var err error
 	if lstater, ok := fs.(afero.Lstater); ok {
 		stat, _, err = lstater.LstatIfPossible(path)
-		if err != nil {
-			return false, err
-		}
 	} else {
 		stat, err = fs.Stat(path)
-		if err != nil {
-			return false, err
-		}
 	}
-	if !stat.Mode().IsRegular() {
+	if err != nil {
+		return false, err
+	} else if !stat.Mode().IsRegular() {
 		return false, nil
 	}
 	return true, nil

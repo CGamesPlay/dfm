@@ -30,7 +30,10 @@ $ dfm copy --force
 files/.bashrc -> ./test_home/.bashrc
 files/.config/fish/config.fish -> ./test_home/.config/fish/config.fish
 
+# Removing specific file
+$ dfm remove .bashrc
+removed .bashrc
+
 # Cleaning up
 $ dfm remove
-removed .bashrc
 removed .config/fish/config.fish

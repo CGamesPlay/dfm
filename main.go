@@ -70,8 +70,7 @@ func runInit(cmd *cobra.Command, args []string) {
 	fmt.Printf("Initialized %s as a dfm directory.\n", dfm.Config.path)
 }
 
-func runSync(method func(errorHandler ErrorHandler) error) {
-	err := method(errorHandler)
+func handleCommandError(err error) {
 	if err != nil {
 		fatal(err)
 		return
@@ -82,11 +81,23 @@ func runSync(method func(errorHandler ErrorHandler) error) {
 }
 
 func runLink(cmd *cobra.Command, args []string) {
-	runSync(dfm.LinkAll)
+	var err error
+	if len(args) == 0 {
+		err = dfm.LinkAll(errorHandler)
+	} else {
+		err = dfm.LinkFiles(args, errorHandler)
+	}
+	handleCommandError(err)
 }
 
 func runCopy(cmd *cobra.Command, args []string) {
-	runSync(dfm.CopyAll)
+	var err error
+	if len(args) == 0 {
+		err = dfm.CopyAll(errorHandler)
+	} else {
+		err = dfm.CopyFiles(args, errorHandler)
+	}
+	handleCommandError(err)
 }
 
 // Copy the given files into the repository and replace them with symlinks
@@ -100,18 +111,17 @@ func runAdd(cmd *cobra.Command, args []string) {
 		return
 	}
 	err := dfm.AddFiles(args, addToRepo, !addWithCopy, errorHandler)
-
-	if err != nil {
-		fatal(err)
-		return
-	}
-	if failed {
-		os.Exit(1)
-	}
+	handleCommandError(err)
 }
 
 func runRemove(cmd *cobra.Command, args []string) {
-	dfm.RemoveAll()
+	var err error
+	if len(args) == 0 {
+		err = dfm.RemoveAll()
+	} else {
+		err = dfm.RemoveFiles(args)
+	}
+	handleCommandError(err)
 }
 
 func initConfig() {
@@ -188,14 +198,14 @@ Specifying --repos and --target will allow you to configure which repos are used
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "link",
 		Short: "Create symlinks to tracked files",
-		Args:  cobra.NoArgs,
+		Args:  cobra.ArbitraryArgs,
 		Run:   runLink,
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "copy",
 		Short: "Create copies of tracked files",
-		Args:  cobra.NoArgs,
+		Args:  cobra.ArbitraryArgs,
 		Run:   runCopy,
 	})
 
@@ -217,7 +227,7 @@ If no repo is specified in the command, the repo that is listed last will be use
 		Use:     "remove",
 		Aliases: []string{"rm"},
 		Short:   "Remove all tracked files",
-		Args:    cobra.NoArgs,
+		Args:    cobra.ArbitraryArgs,
 		Run:     runRemove,
 	})
 
