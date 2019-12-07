@@ -240,6 +240,8 @@ func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorH
 	return overallErr
 }
 
+// processWithRetry calls the given function one or more times. If the function
+// returns and error, the ErrorHandler can indicate to retry the function again.
 func processWithRetry(
 	errorHandler ErrorHandler,
 	process func() *FileError,
@@ -260,34 +262,15 @@ retry:
 	return false, true, newErr
 }
 
-// runSync is the internal workhorse for both CopyAll and LinkAll.
-func (dfm *Dfm) runSync(
+// syncFiles will handle the given list of files and add files to the manifest
+// appropriately.
+func (dfm *Dfm) syncFiles(
+	fileList *ordered_map.OrderedMap,
+	nextManifest map[string]bool,
 	errorHandler ErrorHandler,
 	operation string,
 	handleFile func(s, d string) error,
 ) error {
-	fs := dfm.fs
-	// Map relative -> repo. Later repos override earlier ones.
-	fileList := ordered_map.NewOrderedMap()
-	for _, repo := range dfm.Config.repos {
-		repoPath := dfm.RepoPath(repo, "")
-		err := afero.Walk(fs, repoPath, func(path string, fi os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if fi.IsDir() {
-				return nil
-			}
-			relativePath := path[len(repoPath)+1:]
-			fileList.Set(relativePath, repo)
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	nextManifest := make(map[string]bool, fileList.Len())
 	iter := fileList.IterFunc()
 	var overallErr error
 	for kv, ok := iter(); ok; kv, ok = iter() {
@@ -314,8 +297,59 @@ func (dfm *Dfm) runSync(
 		}
 		dfm.log(fileOperation, relative, repo, fileErr)
 	}
+	return overallErr
+}
 
-	if overallErr != nil {
+func (dfm *Dfm) buildFileList(paths []string) (*ordered_map.OrderedMap, error) {
+	fs := dfm.fs
+	// Map relative -> repo. Later repos override earlier ones.
+	fileList := ordered_map.NewOrderedMap()
+	for _, path := range paths {
+		for _, repo := range dfm.Config.repos {
+			err := populateFileList(fs, dfm.RepoPath(repo, ""), path, fileList, repo)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return fileList, nil
+}
+
+// runPartialSync is used for syncing specific files. It accepts a list of
+// relative filenames to sync, updates the manifest, but does not run the
+// cleanup.
+func (dfm *Dfm) runPartialSync(
+	inputFilenames []string,
+	errorHandler ErrorHandler,
+	operation string,
+	handleFile func(s, d string) error,
+) error {
+	fileList, err := dfm.buildFileList(inputFilenames)
+	if err != nil {
+		return err
+	}
+	err = dfm.syncFiles(fileList, dfm.Config.manifest, errorHandler, operation, handleFile)
+	if saveErr := dfm.saveConfig(); saveErr != nil {
+		return saveErr
+	}
+	return err
+}
+
+// runSync is the main sync function, responsible for listing all files to be
+// synced, syncing them, then running the cleanup.
+func (dfm *Dfm) runSync(
+	errorHandler ErrorHandler,
+	operation string,
+	handleFile func(s, d string) error,
+) error {
+	fileList, err := dfm.buildFileList([]string{"."})
+	if err != nil {
+		return err
+	}
+
+	nextManifest := make(map[string]bool, fileList.Len())
+	err = dfm.syncFiles(fileList, nextManifest, errorHandler, operation, handleFile)
+	if err != nil {
 		// Since there was an error, we will bypass the autoclean. This
 		// means all existing files plus all new files are presently synced.
 		// Merge the old and new manifests.
@@ -330,43 +364,84 @@ func (dfm *Dfm) runSync(
 	if saveErr := dfm.saveConfig(); saveErr != nil {
 		return saveErr
 	}
-	return overallErr
+	return err
 }
 
-// LinkAll creates symlinks for files in all repos in the target directory.
+// handleLink is the workhorse for linking files.
+func (dfm *Dfm) handleLink(s, d string) error {
+	done, err := IsLinkedFile(dfm.fs, s, d)
+	if err != nil {
+		return err
+	} else if done {
+		return ErrNotNeeded
+	} else if dfm.DryRun {
+		return nil
+	}
+	relativePath := d[len(dfm.Config.targetPath)+1:]
+	repoPath := s[:len(s)-len(relativePath)-1]
+	if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
+		return err
+	}
+	return LinkFile(dfm.fs, s, d)
+}
+
+// handleCopy is the workhorse for copying files.
+func (dfm *Dfm) handleCopy(s, d string) error {
+	// XXX - check if file is identical
+	if dfm.DryRun {
+		return nil
+	}
+	relativePath := d[len(dfm.Config.targetPath)+1:]
+	repoPath := s[:len(s)-len(relativePath)-1]
+	if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
+		return err
+	}
+	return CopyFile(dfm.fs, s, d)
+}
+
+// LinkFiles creates symlinks for the given files only. Does not run the
+// autoclean, but does update the manifest.
+func (dfm *Dfm) LinkFiles(inputFilenames []string, errorHandler ErrorHandler) error {
+	return dfm.runPartialSync(inputFilenames, errorHandler, OperationLink, dfm.handleLink)
+}
+
+// LinkAll creates symlinks for files in all repos in the target directory and
+// runs the autoclean.
 func (dfm *Dfm) LinkAll(errorHandler ErrorHandler) error {
-	return dfm.runSync(errorHandler, OperationLink, func(s, d string) error {
-		done, err := IsLinkedFile(dfm.fs, s, d)
-		if err != nil {
-			return err
-		} else if done {
-			return ErrNotNeeded
-		} else if dfm.DryRun {
-			return nil
-		}
-		relativePath := d[len(dfm.Config.targetPath)+1:]
-		repoPath := s[:len(s)-len(relativePath)-1]
-		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
-			return err
-		}
-		return LinkFile(dfm.fs, s, d)
-	})
+	return dfm.runSync(errorHandler, OperationLink, dfm.handleLink)
 }
 
-// CopyAll copies files in all repos into the target directory.
+// CopyFiles copies the given files to the target directory. Does not run the
+// autoclean, but does update the manifest.
+func (dfm *Dfm) CopyFiles(inputFilenames []string, errorHandler ErrorHandler) error {
+	return dfm.runPartialSync(inputFilenames, errorHandler, OperationCopy, dfm.handleCopy)
+}
+
+// CopyAll copies all files in all report to the target directory and
+// runs the autoclean.
 func (dfm *Dfm) CopyAll(errorHandler ErrorHandler) error {
-	return dfm.runSync(errorHandler, OperationCopy, func(s, d string) error {
-		// XXX - check if file is identical
-		if dfm.DryRun {
-			return nil
+	return dfm.runSync(errorHandler, OperationCopy, dfm.handleCopy)
+}
+
+// RemoveFiles removes the given files from the target directory and from the
+// manifest.
+func (dfm *Dfm) RemoveFiles(inputFilenames []string) error {
+	nextManifest := make(map[string]bool, len(dfm.Config.manifest))
+	for filename := range nextManifest {
+		nextManifest[filename] = true
+	}
+	for _, filename := range inputFilenames {
+		if _, ok := nextManifest[filename]; !ok {
+			dfm.log(OperationSkip, filename, "", NewFileError(filename, "not in manifest"))
+		} else {
+			delete(nextManifest, filename)
 		}
-		relativePath := d[len(dfm.Config.targetPath)+1:]
-		repoPath := s[:len(s)-len(relativePath)-1]
-		if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
-			return err
-		}
-		return CopyFile(dfm.fs, s, d)
-	})
+	}
+	dfm.autoclean(nextManifest)
+	if saveErr := dfm.saveConfig(); saveErr != nil {
+		return saveErr
+	}
+	return nil
 }
 
 // RemoveAll removes all synced files from the target directory.

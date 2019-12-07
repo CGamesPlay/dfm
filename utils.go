@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path"
 
+	"github.com/cevaris/ordered_map"
 	"github.com/spf13/afero"
 )
 
@@ -21,6 +22,29 @@ func pathJoin(components ...string) string {
 		result = path.Join(components[i], result)
 	}
 	return result
+}
+
+// populateFileList scans the relative filename, recursively adding paths
+// relative to root to fileList with the given value. The filename can be ".",
+// in which case the entire root will be scanned.
+func populateFileList(
+	fs afero.Fs,
+	root, filename string,
+	fileList *ordered_map.OrderedMap,
+	value string,
+) error {
+	filename = pathJoin(root, filename)
+	return afero.Walk(fs, filename, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if fi.IsDir() {
+			return nil
+		}
+		relativePath := path[len(root)+1:]
+		fileList.Set(relativePath, value)
+		return nil
+	})
 }
 
 // IsRegularFile will return true if the given file is a regular file (symlinks
