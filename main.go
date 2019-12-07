@@ -182,7 +182,7 @@ Specifying --repos and --target will allow you to configure which repos are used
 		Run:     runInit,
 	}
 	initCmd.Flags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
-	initCmd.Flags().StringVar(&cliOptions.Target, "target", "", "directory to sync files in")
+	initCmd.Flags().StringVar(&cliOptions.Target, "target", "", "directory to place files in")
 	rootCmd.AddCommand(initCmd)
 
 	rootCmd.AddCommand(&cobra.Command{
@@ -216,7 +216,7 @@ If no repo is specified in the command, the repo that is listed last will be use
 	rootCmd.AddCommand(&cobra.Command{
 		Use:     "remove",
 		Aliases: []string{"rm"},
-		Short:   "Remove all synced files",
+		Short:   "Remove all tracked files",
 		Args:    cobra.NoArgs,
 		Run:     runRemove,
 	})
