@@ -50,7 +50,7 @@ type Config struct {
 	path string
 	// Target directory, normally ~/
 	targetPath string
-	// Active repos
+	// All repositories
 	repos []string
 	// Tracked files
 	manifest map[string]bool

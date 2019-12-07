@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -107,6 +106,15 @@ func (dfm *Dfm) HasRepo(repo string) bool {
 	return false
 }
 
+func (dfm *Dfm) assertIsActiveRepo(repo string) error {
+	if !dfm.IsValidRepo(repo) {
+		return fmt.Errorf("repo %#v does not exist. To create it, run:\nmkdir %s", repo, dfm.RepoPath(repo, ""))
+	} else if !dfm.HasRepo(repo) {
+		return fmt.Errorf("repo %#v is not active, cannot add files to it", repo)
+	}
+	return nil
+}
+
 // RepoPath returns the path to the given file inside of the given repo.
 func (dfm *Dfm) RepoPath(repo string, relative string) string {
 	return pathJoin(dfm.Config.path, repo, relative)
@@ -165,15 +173,6 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) (string, error)
 	return relativePath, nil
 }
 
-func (dfm *Dfm) assertIsActiveRepo(repo string) error {
-	if !dfm.IsValidRepo(repo) {
-		return fmt.Errorf("repo %#v does not exist. To create it, run:\nmkdir %s", repo, dfm.RepoPath(repo, ""))
-	} else if !dfm.HasRepo(repo) {
-		return fmt.Errorf("repo %#v is not active, cannot add files to it", repo)
-	}
-	return nil
-}
-
 // AddFile will copy the provided file into dfm, optionally replacing the
 // original with a symlink to the imported file.
 func (dfm *Dfm) AddFile(filename string, repo string, link bool) error {
@@ -182,39 +181,25 @@ func (dfm *Dfm) AddFile(filename string, repo string, link bool) error {
 
 // AddFiles will copy all of the provided files into dfm, optionally replacing
 // the originals with symlinks to the imported ones.
-func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorHandler ErrorHandler) (overallErr error) {
+func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorHandler ErrorHandler) error {
 	if err := dfm.assertIsActiveRepo(repo); err != nil {
 		return err
 	}
 
-	filenames := make([]string, 0, len(inputFilenames))
+	fileList := ordered_map.NewOrderedMap()
 	for _, inputFilename := range inputFilenames {
-		stat, err := dfm.fs.Stat(inputFilename)
+		err := populateFileList(dfm.fs, ".", inputFilename, fileList, repo)
 		if err != nil {
 			return err
-		} else if stat.IsDir() {
-			err := afero.Walk(dfm.fs, inputFilename, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-				if !info.IsDir() {
-					filenames = append(filenames, path)
-				}
-				return nil
-			})
-			if err != nil {
-				// If an error occurs while listing out files, just abort the
-				// add.
-				return err
-			}
-		} else {
-			filenames = append(filenames, inputFilename)
 		}
 	}
 
-	for _, filename := range filenames {
-		var relativePath string
+	iter := fileList.IterFunc()
+	var overallErr error
+	for kv, ok := iter(); ok; kv, ok = iter() {
+		filename := kv.Key.(string)
 		fileOperation := OperationAdd
+		var relativePath string
 		skip, abort, fileErr := processWithRetry(errorHandler, func() *FileError {
 			var rawErr error
 			relativePath, rawErr = dfm.addFile(filename, repo, link)
@@ -240,26 +225,22 @@ func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorH
 	return overallErr
 }
 
-// processWithRetry calls the given function one or more times. If the function
-// returns and error, the ErrorHandler can indicate to retry the function again.
-func processWithRetry(
-	errorHandler ErrorHandler,
-	process func() *FileError,
-) (skipped, aborted bool, reason error) {
-retry:
-	rawErr := process()
-	if rawErr == nil {
-		return false, false, nil
-	} else if IsNotNeeded(rawErr) {
-		return true, false, rawErr
+// buildFileList scans the given paths in each repo, and returns an OrderedMap
+// of relative -> repo. Only the file existing in the last-referenced repo will
+// be used.
+func (dfm *Dfm) buildFileList(paths []string) (*ordered_map.OrderedMap, error) {
+	fs := dfm.fs
+	// Map relative -> repo. Later repos override earlier ones.
+	fileList := ordered_map.NewOrderedMap()
+	for _, path := range paths {
+		for _, repo := range dfm.Config.repos {
+			err := populateFileList(fs, dfm.RepoPath(repo, ""), path, fileList, repo)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	newErr := errorHandler(rawErr)
-	if newErr == nil {
-		return true, false, rawErr
-	} else if newErr == Retry {
-		goto retry
-	}
-	return false, true, newErr
+	return fileList, nil
 }
 
 // syncFiles will handle the given list of files and add files to the manifest
@@ -298,21 +279,6 @@ func (dfm *Dfm) syncFiles(
 		dfm.log(fileOperation, relative, repo, fileErr)
 	}
 	return overallErr
-}
-
-func (dfm *Dfm) buildFileList(paths []string) (*ordered_map.OrderedMap, error) {
-	fs := dfm.fs
-	// Map relative -> repo. Later repos override earlier ones.
-	fileList := ordered_map.NewOrderedMap()
-	for _, path := range paths {
-		for _, repo := range dfm.Config.repos {
-			err := populateFileList(fs, dfm.RepoPath(repo, ""), path, fileList, repo)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	return fileList, nil
 }
 
 // runPartialSync is used for syncing specific files. It accepts a list of

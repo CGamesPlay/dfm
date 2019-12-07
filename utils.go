@@ -41,7 +41,12 @@ func populateFileList(
 		if fi.IsDir() {
 			return nil
 		}
-		relativePath := path[len(root)+1:]
+		var relativePath string
+		if root != "." {
+			relativePath = path[len(root)+1:]
+		} else {
+			relativePath = path
+		}
 		fileList.Set(relativePath, value)
 		return nil
 	})

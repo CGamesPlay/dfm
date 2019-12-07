@@ -94,3 +94,25 @@ func (err *FileError) Cause() error {
 	}
 	return err.cause
 }
+
+// processWithRetry calls the given function one or more times. If the function
+// returns an error, the ErrorHandler can indicate to retry the function again.
+func processWithRetry(
+	errorHandler ErrorHandler,
+	process func() *FileError,
+) (skipped, aborted bool, reason error) {
+retry:
+	rawErr := process()
+	if rawErr == nil {
+		return false, false, nil
+	} else if IsNotNeeded(rawErr) {
+		return true, false, rawErr
+	}
+	newErr := errorHandler(rawErr)
+	if newErr == nil {
+		return true, false, rawErr
+	} else if newErr == Retry {
+		goto retry
+	}
+	return false, true, newErr
+}
