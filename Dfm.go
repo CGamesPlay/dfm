@@ -189,8 +189,10 @@ func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorH
 
 	filenames := make([]string, 0, len(inputFilenames))
 	for _, inputFilename := range inputFilenames {
-		stat, _ := dfm.fs.Stat(inputFilename)
-		if stat.IsDir() {
+		stat, err := dfm.fs.Stat(inputFilename)
+		if err != nil {
+			return err
+		} else if stat.IsDir() {
 			err := afero.Walk(dfm.fs, inputFilename, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err

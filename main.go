@@ -151,13 +151,13 @@ func main() {
 		Long: wordwrap.WrapString(`dfm is a tool to manage repositories of configuration files. A simple workflow for dfm might look like this:
 
   mkdir -p ~/dotfiles/files; cd ~/dotfiles
-  dfm init . --repos files
+  dfm init --repos files
   dfm add ~/.bashrc
 
 Now ~/dotfiles can be tracked in source control, and to install on another machine you would use:
 
   cd ~/dotfiles
-  dfm init . --repos files
+  dfm init --repos files
   dfm link
 
 Note that .dfm.toml is a per-machine configuration and should not be tracked in source control.
@@ -177,7 +177,7 @@ Note that .dfm.toml is a per-machine configuration and should not be tracked in 
 		Long: wordwrap.WrapString(`Initialize a directory to be used with dfm by creating the .dfm.toml file there.
 
 Specifying --repos and --target will allow you to configure which repos are used and where the files should be stored. It is safe to run dfm init on an already-initialized dfm directory, to change the repos that are being used.`, 80),
-		Example: `  dfm init --repos files ~/dotfiles`,
+		Example: `  dfm init --repos files`,
 		Args:    cobra.NoArgs,
 		Run:     runInit,
 	}
