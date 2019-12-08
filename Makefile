@@ -1,11 +1,12 @@
-.PHONY: test release
+.PHONY: all install test release
 
 SOURCES = $(wildcard *.go) go.mod go.sum
 GOFLAGS = -ldflags '-s -w -extldflags "-static"'
 
-bin/dfm: $(SOURCES)
-	mkdir -p bin
-	go build -o bin/dfm .
+all: install
+
+install:
+	go install .
 
 bin/darwin_amd64/dfm: $(SOURCES)
 	mkdir -p $(dir $@)
@@ -20,7 +21,6 @@ bin/%.tar.gz: bin/%/dfm
 
 release: bin/darwin_amd64.tar.gz bin/linux_amd64.tar.gz
 
-test: bin/dfm
-	go test .
-	./test/snapshot.sh
+test: install
+	go test . -tags=integration
 
