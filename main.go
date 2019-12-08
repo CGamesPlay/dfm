@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mitchellh/go-wordwrap"
 	"github.com/spf13/cobra"
@@ -62,22 +63,41 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
-func runInit(cmd *cobra.Command, args []string) {
-	if err := dfm.Init(); err != nil {
-		fatal(err)
-		return
-	}
-	fmt.Printf("Initialized %s as a dfm directory.\n", dfm.Config.path)
-}
-
 func handleCommandError(err error) {
 	if err != nil {
 		fatal(err)
 		return
 	}
 	if failed {
-		os.Exit(1)
+		os.Exit(2)
 	}
+}
+
+// resolveInputFilenames transforms the given list of filenames to relative
+// paths in the target directory, taking into account the pwd. Errors will set
+// failed to true and the invalid value will not be in the returned value.
+func resolveInputFilenames(filenames []string) []string {
+	targetPath := dfm.TargetPath("")
+	results := make([]string, 0, len(filenames))
+	for _, input := range filenames {
+		absolute, err := filepath.Abs(input)
+		if err != nil {
+			// If Abs fails, none of the paths will be valid. Just abort.
+			fatal(err)
+		}
+		// XXX - test if this handles case-insensitivity properly
+		if !strings.HasPrefix(absolute, targetPath) {
+			fmt.Fprintf(os.Stderr, "%s: not in target path (%s)\n", input, targetPath)
+		} else {
+			results = append(results, absolute[len(targetPath)+1:])
+		}
+	}
+	return results
+}
+
+func runInit(cmd *cobra.Command, args []string) {
+	handleCommandError(dfm.Init())
+	fmt.Printf("Initialized %s as a dfm directory.\n", dfm.Config.path)
 }
 
 func runLink(cmd *cobra.Command, args []string) {
@@ -85,7 +105,7 @@ func runLink(cmd *cobra.Command, args []string) {
 	if len(args) == 0 {
 		err = dfm.LinkAll(errorHandler)
 	} else {
-		err = dfm.LinkFiles(args, errorHandler)
+		err = dfm.LinkFiles(resolveInputFilenames(args), errorHandler)
 	}
 	handleCommandError(err)
 }
@@ -95,7 +115,7 @@ func runCopy(cmd *cobra.Command, args []string) {
 	if len(args) == 0 {
 		err = dfm.CopyAll(errorHandler)
 	} else {
-		err = dfm.CopyFiles(args, errorHandler)
+		err = dfm.CopyFiles(resolveInputFilenames(args), errorHandler)
 	}
 	handleCommandError(err)
 }
@@ -110,7 +130,7 @@ func runAdd(cmd *cobra.Command, args []string) {
 		fatal(fmt.Errorf("no repos are configured and no repo was specified"))
 		return
 	}
-	err := dfm.AddFiles(args, addToRepo, !addWithCopy, errorHandler)
+	err := dfm.AddFiles(resolveInputFilenames(args), addToRepo, !addWithCopy, errorHandler)
 	handleCommandError(err)
 }
 
@@ -119,7 +139,7 @@ func runRemove(cmd *cobra.Command, args []string) {
 	if len(args) == 0 {
 		err = dfm.RemoveAll()
 	} else {
-		err = dfm.RemoveFiles(args)
+		err = dfm.RemoveFiles(resolveInputFilenames(args))
 	}
 	handleCommandError(err)
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -127,21 +126,13 @@ func (dfm *Dfm) TargetPath(relative string) string {
 
 // addFile is the internal implementation of AddFile and AddFiles. Does less
 // error checking. Returns the relative path and an error value.
-func (dfm *Dfm) addFile(filename string, repo string, link bool) (string, error) {
+func (dfm *Dfm) addFile(relativePath string, repo string, link bool) (string, error) {
 	fs := dfm.fs
-	targetPath, err := filepath.Abs(filename)
-	if err != nil {
-		return "", WrapFileError(err, filename)
-	}
-	// Verify file is under targetPath
-	if !strings.HasPrefix(targetPath, dfm.Config.targetPath+"/") {
-		return "", NewFileErrorf(targetPath, "not in target path (%s)", dfm.Config.targetPath)
-	}
-	relativePath := targetPath[len(dfm.Config.targetPath)+1:]
+	targetPath := dfm.TargetPath(relativePath)
 	repoPath := dfm.RepoPath(repo, relativePath)
 	isRegular, err := IsRegularFile(fs, targetPath)
 	if err != nil {
-		return "", WrapFileError(err, filename)
+		return "", WrapFileError(err, targetPath)
 	} else if !isRegular {
 		if linked, err := IsLinkedFile(fs, repoPath, targetPath); linked || err != nil {
 			if err != nil {
@@ -149,7 +140,7 @@ func (dfm *Dfm) addFile(filename string, repo string, link bool) (string, error)
 			}
 			return "", ErrNotNeeded
 		}
-		return "", NewFileError(filename, "only regular files are supported")
+		return "", NewFileError(targetPath, "only regular files are supported")
 	}
 	if dfm.DryRun {
 		// do nothing
@@ -188,7 +179,11 @@ func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorH
 
 	fileList := ordered_map.NewOrderedMap()
 	for _, inputFilename := range inputFilenames {
-		err := populateFileList(dfm.fs, ".", inputFilename, fileList, repo)
+		joined := pathJoin(dfm.Config.targetPath, inputFilename)
+		if !strings.HasPrefix(joined, dfm.Config.targetPath) {
+			return NewFileErrorf(inputFilename, "not in target path (%s)", dfm.Config.targetPath)
+		}
+		err := populateFileList(dfm.fs, dfm.Config.targetPath, inputFilename, fileList, repo)
 		if err != nil {
 			return err
 		}

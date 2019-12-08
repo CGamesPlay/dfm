@@ -23,17 +23,14 @@ removed .ssh/config
 
 # Importing with add
 $ dfm add test_home/.config
-added test_home/.config/fish/config.fish
+added .config/fish/config.fish
 
 # Exporting files with copy
 $ dfm copy --force
 files/.bashrc -> ./test_home/.bashrc
 files/.config/fish/config.fish -> ./test_home/.config/fish/config.fish
 
-# Removing specific file
-$ dfm remove .bashrc
-removed .bashrc
-
 # Cleaning up
 $ dfm remove
+removed .bashrc
 removed .config/fish/config.fish

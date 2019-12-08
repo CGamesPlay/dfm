@@ -61,10 +61,6 @@ dfm copy --force
 [ -e test_home/.bashrc ] || fail 'bashrc missing'
 [ ! -L test_home/.bashrc ] || fail 'bashrc is a link'
 
-banner 'Removing specific file'
-dfm remove .bashrc
-[ ! -e test_home/.bashrc ] || fail 'bashrc not removed'
-
 banner 'Cleaning up'
 dfm remove
 [ ! -e test_home/.config ] || fail 'empty directory not cleaned'
