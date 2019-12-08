@@ -228,7 +228,7 @@ Specifying --repos and --target will allow you to configure which repos are used
 		Args:    cobra.NoArgs,
 		Run:     runInit,
 	}
-	initCmd.Flags().StringArrayVar(&cliOptions.Repos, "repos", nil, "repositories to track")
+	initCmd.Flags().StringSliceVar(&cliOptions.Repos, "repos", nil, "repositories to track")
 	initCmd.Flags().StringVar(&cliOptions.Target, "target", "", "directory to place files in")
 	rootCmd.AddCommand(initCmd)
 

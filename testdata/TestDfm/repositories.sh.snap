@@ -1,0 +1,6 @@
+$ dfm init --repos one,two
+Initialized /test/home/dfmdir as a dfm directory.
+$ dfm link
+two/.bashrc -> /test/home/.bashrc
+one/.vimrc -> /test/home/.vimrc
+two/.zshrc -> /test/home/.zshrc
