@@ -1,4 +1,4 @@
-$ dfm --repos files --target test_home init
+$ dfm init --repos files --target test_home
 Initialized /test/dfmdir as a dfm directory.
 
 # Sync dry run

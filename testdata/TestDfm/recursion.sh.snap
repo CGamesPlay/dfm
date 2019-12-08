@@ -1,0 +1,6 @@
+$ dfm init --repos files
+Initialized /test/home/dfmdir as a dfm directory.
+$ dfm add .vimrc
+dfmdir/files/.vimrc: cannot add a file already inside the dfm directory
+$ dfm link .vimrc
+files/.vimrc -> /test/home/.vimrc

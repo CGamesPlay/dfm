@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strings"
@@ -182,6 +183,8 @@ func (dfm *Dfm) AddFiles(inputFilenames []string, repo string, link bool, errorH
 		joined := pathJoin(dfm.Config.targetPath, inputFilename)
 		if !strings.HasPrefix(joined, dfm.Config.targetPath) {
 			return NewFileErrorf(inputFilename, "not in target path (%s)", dfm.Config.targetPath)
+		} else if strings.HasPrefix(joined, dfm.Config.path) {
+			return NewFileError(inputFilename, "cannot add a file already inside the dfm directory")
 		}
 		err := populateFileList(dfm.fs, dfm.Config.targetPath, inputFilename, fileList, repo)
 		if err != nil {
@@ -228,11 +231,17 @@ func (dfm *Dfm) buildFileList(paths []string) (*ordered_map.OrderedMap, error) {
 	// Map relative -> repo. Later repos override earlier ones.
 	fileList := ordered_map.NewOrderedMap()
 	for _, path := range paths {
+		found := false
 		for _, repo := range dfm.Config.repos {
 			err := populateFileList(fs, dfm.RepoPath(repo, ""), path, fileList, repo)
-			if err != nil {
+			if err == nil {
+				found = true
+			} else if !os.IsNotExist(err) {
 				return nil, err
 			}
+		}
+		if !found {
+			return nil, NewFileError(path, "not found in any active repositories")
 		}
 	}
 	return fileList, nil
@@ -393,7 +402,7 @@ func (dfm *Dfm) RemoveFiles(inputFilenames []string) error {
 	}
 	for _, filename := range inputFilenames {
 		if _, ok := nextManifest[filename]; !ok {
-			dfm.log(OperationSkip, filename, "", NewFileError(filename, "not in manifest"))
+			dfm.log(OperationSkip, filename, "", NewFileError(filename, "not tracked by dfm"))
 		} else {
 			delete(nextManifest, filename)
 		}

@@ -1,0 +1,22 @@
+$ dfm init --repos files
+Initialized /test/home/dfmdir as a dfm directory.
+$ dfm link
+files/AUTOCLEAN -> /test/home/AUTOCLEAN
+
+# Importing bash config
+$ dfm add /test/home/.bashrc .
+added .bashrc
+added .config/bash/00-test.sh
+
+# Importing a new config file
+$ dfm link 10-test.sh
+files/.config/bash/10-test.sh -> /test/home/.config/bash/10-test.sh
+
+# Reversing the import
+$ dfm remove 10-test.sh
+removed .config/bash/10-test.sh
+
+# Running autoclean
+$ dfm link
+files/.config/bash/20-test.sh -> /test/home/.config/bash/20-test.sh
+removed AUTOCLEAN

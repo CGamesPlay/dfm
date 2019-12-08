@@ -2,28 +2,14 @@
 # Runs a set of DFM commands in empty directories and make some simple
 # assertions.
 set -e
-
-banner() {
-  echo
-  echo "# $1"
-}
-
-fail() {
-  echo "$1" >&2
-  exit 1
-}
+. "$(dirname "$0")/../helpers.sh"
 
 export DFM_DIR=dfmdir
-dfm() {
-  echo "\$ dfm" "$@"
-  command dfm "$@"
-}
 
-rm -rf dfmdir test_home
 mkdir -p dfmdir/files test_home
 echo 'config file' > dfmdir/files/.bashrc
 
-dfm --repos files --target test_home init
+dfm init --repos files --target test_home
 
 banner "Sync dry run"
 dfm link -n
@@ -63,5 +49,3 @@ dfm copy --force
 banner 'Cleaning up'
 dfm remove
 [ ! -e test_home/.config ] || fail 'empty directory not cleaned'
-
-rm -rf dfmdir test_home
