@@ -1,0 +1,15 @@
+$ dfm init --repos files
+Initialized /test/home/dfmdir as a dfm directory.
+$ dfm link
+files/.bashrc -> /test/home/.bashrc
+files/.zshrc -> /test/home/.zshrc
+
+# Ejecting one file
+$ dfm eject /test/home/.bashrc
+files/.bashrc -> /test/home/.bashrc
+$ dfm link
+
+# Ejecting everything
+$ dfm eject
+files/.zshrc -> /test/home/.zshrc
+$ dfm link

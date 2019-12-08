@@ -361,6 +361,17 @@ func (dfm *Dfm) handleCopy(s, d string) error {
 	if dfm.DryRun {
 		return nil
 	}
+	isLinked, err := IsLinkedFile(dfm.fs, s, d)
+	if err != nil {
+		return err
+	} else if isLinked {
+		// We allow copy to replace a link to its source file. This should only
+		// come up when ejecting.
+		err = RemoveFile(dfm.fs, d)
+		if err != nil {
+			return err
+		}
+	}
 	relativePath := d[len(dfm.Config.targetPath)+1:]
 	repoPath := s[:len(s)-len(relativePath)-1]
 	if err := MakeDirAll(dfm.fs, path.Dir(relativePath), repoPath, dfm.Config.targetPath); err != nil {
@@ -414,7 +425,7 @@ func (dfm *Dfm) RemoveFiles(inputFilenames []string) error {
 	return nil
 }
 
-// RemoveAll removes all synced files from the target directory.
+// RemoveAll removes all tracked files from the target directory.
 func (dfm *Dfm) RemoveAll() error {
 	nextManifest := map[string]bool{}
 	dfm.autoclean(nextManifest)
@@ -422,6 +433,27 @@ func (dfm *Dfm) RemoveAll() error {
 		return saveErr
 	}
 	return nil
+}
+
+// EjectFiles copies the given files to the target directory, but removes them
+// from the manifest. This results in future operations failing due to an
+// existing file, as well as the autoclean never removing the files.
+func (dfm *Dfm) EjectFiles(inputFilenames []string, errorHandler ErrorHandler) error {
+	fileList, err := dfm.buildFileList(inputFilenames)
+	if err != nil {
+		return err
+	}
+	err = dfm.syncFiles(fileList, dfm.Config.manifest, errorHandler, OperationCopy, dfm.handleCopy)
+	iter := fileList.IterFunc()
+	for kv, ok := iter(); ok; kv, ok = iter() {
+		relative := kv.Key.(string)
+		// Remove the file from the manifest
+		delete(dfm.Config.manifest, relative)
+	}
+	if saveErr := dfm.saveConfig(); saveErr != nil {
+		return saveErr
+	}
+	return err
 }
 
 // autoclean will remove all synced files from the target directory except those

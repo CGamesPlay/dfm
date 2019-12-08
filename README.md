@@ -4,7 +4,7 @@ dfm is a generic file syncing utility to keep two directories in sync, using sym
 
 **Features:**
 
-- No dependency on git. dfm works fine with git or any other RCS.
+- No dependency on git. dfm works fine with git, Dropbox, or any other file syncing tool.
 - No configuration files. Add files to be tracked just by placing them in the directory.
 - No runtime dependencies. dfm can be run directly from the single binary file on a brand new machine.
 - Overlay multiple repositories on top of each other.
@@ -83,17 +83,17 @@ Notice that `.my.cnf` was listed in both `shared` and `work`. Because `work` was
 
 ### Ejecting
 
-dfm has two modes for tracking files: link and copy. The method used in this documentation is link, where files are tracked by using symlinks into the repos. With copy, files are copied directly to the target location from the repos. Copying files is useful if you want to dtop using dfm to migrate to another dotfiles solution.
+If you want to stop using dfm for some files, you can use `dfm eject` to copy it to your home directory and prevent dfm from automatically cleaning it up later. For example:
 
 ```bash
 export DFM_DIR=~/dotfiles
-dfm copy --force
-rm -rf ~/dotfiles
+dfm eject ~/.bashrc
+rm ~/dotfiles/files/.bashrc
 ```
 
-Once you run `dfm copy --force`, dfm replaces all of the symlinks with hard copies, so it's safe to simply delete the dfm directory afterwards.
+dfm will always use a hard copy when using `eject`, so it's safe to simply delete the files from the dfm repo afterwards. Keep in mind that if your dfm directory is shared, any other machines using it will simply see that the files were deleted, and will automatically clean them up when you next run `dfm link`.
 
-**Note:** `dfm copy` and `dfm link` both have automatic cleanup behavior. If you use `dfm copy`, remove a file from a repo, and run `dfm copy` again, the automatic cleanup will remove the file from your home directory. It's recommended to only use `dfm copy` when you are uninstalling dfm.
+If you want to stop using dfm entirely, `dfm eject` with no arguments will eject all tracked files. You can remove your dfm repos afterwards.
 
 ### Managing other directories
 
@@ -108,11 +108,10 @@ dfm -d ~/vhosts link
 
 dfm is built with go, so make sure you have a go compiler set up on your system. The project is a go module, so the other dependencies will be installed automatically when you build the software.
 
-To make and run locally:
+To make and install locally:
 
 ```
-make
-./bin/dfm
+make install
 ```
 
 To test:

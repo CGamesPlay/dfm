@@ -161,6 +161,15 @@ func runRemove(cmd *cobra.Command, args []string) {
 	handleCommandError(err)
 }
 
+func runEject(cmd *cobra.Command, args []string) {
+	if len(args) == 0 {
+		args = []string{"."}
+	} else {
+		args = resolveInputFilenames(args, false)
+	}
+	handleCommandError(dfm.EjectFiles(args, errorHandler))
+}
+
 func initConfig() {
 	var err error
 	if dfmDir == "" {
@@ -233,14 +242,14 @@ Specifying --repos and --target will allow you to configure which repos are used
 	rootCmd.AddCommand(initCmd)
 
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "link",
+		Use:   "link [files]",
 		Short: "Create symlinks to tracked files",
 		Args:  cobra.ArbitraryArgs,
 		Run:   runLink,
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "copy",
+		Use:   "copy [files]",
 		Short: "Create copies of tracked files",
 		Args:  cobra.ArbitraryArgs,
 		Run:   runCopy,
@@ -252,7 +261,11 @@ Specifying --repos and --target will allow you to configure which repos are used
 		Short:   "Begin tracking files",
 		Long: wordwrap.WrapString(`Copy the given files into the repository and replace the originals with links to the tracked files.
 
-If no repo is specified in the command, the repo that is listed last will be used.`, 80),
+If no repo is specified in the command, the repo that is listed last will be used.
+
+This command is a convenient way to replace the following 2 commands:
+  mv ~/myfile $DFM_DIR/files/myfile
+  dfm link ~/myfile`, 80),
 		Args: cobra.MinimumNArgs(1),
 		Run:  runAdd,
 	}
@@ -261,11 +274,30 @@ If no repo is specified in the command, the repo that is listed last will be use
 	rootCmd.AddCommand(addCmd)
 
 	rootCmd.AddCommand(&cobra.Command{
-		Use:     "remove",
+		Use:     "remove [files]",
 		Aliases: []string{"rm"},
-		Short:   "Remove all tracked files",
-		Args:    cobra.ArbitraryArgs,
-		Run:     runRemove,
+		Short:   "Remove tracked files",
+		Long: wordwrap.WrapString(`Remove files from the target directory. The files will remain in the dfm repo, so they will be recreated the next time dfm copy or dfm link is run.
+
+To remove a config file from a dfm repo entirely, simply delete the file and run dfm link or dfm copy. Then dfm will automatically clean up the deleted file.
+
+This command is only useful if you want dfm to stop tracking a file, but dfm eject is a more convenient way of doing this.`, 80),
+		Args: cobra.ArbitraryArgs,
+		Run:  runRemove,
+	})
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "eject [files]",
+		Short: "Stop tracking files",
+		Long: wordwrap.WrapString(`Copy the given files into the target directory without tracking them. This means that dfm link will refuse to overwrite the files (without --force), and removing the files will not cause the autoclean to remove them from the target directory.
+
+This command is meant to be used when you want to keep a config file, but stop tracking it with dfm. Once you have ejected a file, it is safe to remove from the dfm repo. Note: if your dfm repo is shared between multiple machines, any other machines will NOT correctly eject the file: on other machines, it will appear as though the file has been deleted normally.
+
+This command is the inverse of dfm add, and is a convenient way to replace the following 2 commands:
+  dfm remove ~/myfile
+  cp $DFM_DIR/files/myfile ~/myfile`, 80),
+		Args: cobra.ArbitraryArgs,
+		Run:  runEject,
 	})
 
 	if err := rootCmd.Execute(); err != nil {

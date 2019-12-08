@@ -250,6 +250,17 @@ func TestSyncRetry(t *testing.T) {
 	}, logger.messages)
 }
 
+func TestEjectFiles(t *testing.T) {
+	fs := newFs(emptyConfig, []string{"/home/test/dotfiles/files/.bashrc"})
+	dfm := newDfm(t, fs)
+	err := dfm.EjectFiles([]string{".bashrc"}, noErrorHandler)
+	require.NoError(t, err)
+	bytes, err := afero.ReadFile(fs, "/home/test/.bashrc")
+	require.NoError(t, err)
+	require.Equal(t, fileContent, string(bytes))
+	require.Equal(t, map[string]bool{}, dfm.Config.manifest)
+}
+
 func TestAutoclean(t *testing.T) {
 	fs := newFs(emptyConfig, []string{
 		"/home/test/dotfiles/files/.config/fileA",
