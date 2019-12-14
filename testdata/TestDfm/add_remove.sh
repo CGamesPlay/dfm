@@ -11,6 +11,8 @@ echo 'config file' > ~/.bashrc
 echo 'config file' > ~/.config/bash/00-test.sh
 echo 'autoclean' > ~/dfmdir/files/AUTOCLEAN
 
+dfm add ~/.bashrc && fail 'dfm add without init allowed'
+
 dfm init --repos files
 dfm link
 rm ~/dfmdir/files/AUTOCLEAN

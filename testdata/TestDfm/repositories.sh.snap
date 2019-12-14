@@ -4,3 +4,7 @@ $ dfm link
 two/.bashrc -> /test/home/.bashrc
 one/.vimrc -> /test/home/.vimrc
 two/.zshrc -> /test/home/.zshrc
+$ dfm add /test/home/.yarnrc
+repo must be specified when multiple are configured
+$ dfm add -r two /test/home/.yarnrc
+added .yarnrc

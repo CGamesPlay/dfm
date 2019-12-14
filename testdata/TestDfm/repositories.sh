@@ -17,3 +17,8 @@ dfm link
 [ "$(readlink ~/.bashrc)" == ~/dfmdir/two/.bashrc ] || fail 'wrong bashrc selected'
 [ "$(readlink ~/.vimrc)" == ~/dfmdir/one/.vimrc ] || fail 'wrong vimrc selected'
 [ "$(readlink ~/.zshrc)" == ~/dfmdir/two/.zshrc ] || fail 'wrong zshrc selected'
+
+echo 'two' > ~/.yarnrc
+dfm add ~/.yarnrc && fail 'ambiguous dfm add allowed'
+dfm add -r two ~/.yarnrc
+[ "$(readlink ~/.yarnrc)" == ~/dfmdir/two/.yarnrc ] || fail 'yarnrc wrong repo'

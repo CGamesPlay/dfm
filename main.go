@@ -140,12 +140,16 @@ func runCopy(cmd *cobra.Command, args []string) {
 // Copy the given files into the repository and replace them with symlinks
 func runAdd(cmd *cobra.Command, args []string) {
 	// If there is only one repo, allow add without specifying which one.
-	if addToRepo == "" && len(dfm.Config.repos) == 1 {
-		addToRepo = dfm.Config.repos[0]
-	}
 	if addToRepo == "" {
-		fatal(fmt.Errorf("no repos are configured and no repo was specified"))
-		return
+		if len(dfm.Config.repos) == 0 {
+			fatal(fmt.Errorf("no repos are configured. Have you run dfm init?"))
+			return
+		} else if len(dfm.Config.repos) > 1 {
+			fatal(fmt.Errorf("repo must be specified when multiple are configured"))
+			return
+		} else {
+			addToRepo = dfm.Config.repos[0]
+		}
 	}
 	err := dfm.AddFiles(resolveInputFilenames(args, false), addToRepo, !addWithCopy, errorHandler)
 	handleCommandError(err)
@@ -260,8 +264,6 @@ Specifying --repos and --target will allow you to configure which repos are used
 		Aliases: []string{"import"},
 		Short:   "Begin tracking files",
 		Long: wordwrap.WrapString(`Copy the given files into the repository and replace the originals with links to the tracked files.
-
-If no repo is specified in the command, the repo that is listed last will be used.
 
 This command is a convenient way to replace the following 2 commands:
   mv ~/myfile $DFM_DIR/files/myfile

@@ -1,3 +1,5 @@
+$ dfm add /test/home/.bashrc
+no repos are configured. Have you run dfm init?
 $ dfm init --repos files
 Initialized /test/home/dfmdir as a dfm directory.
 $ dfm link
