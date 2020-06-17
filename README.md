@@ -12,6 +12,18 @@ dfm is a generic file syncing utility to keep two directories in sync, using sym
 
 [![asciicast](https://asciinema.org/a/284642.svg)](https://asciinema.org/a/284642)
 
+## Installation
+
+dfm is distributed as a single binary and can be installed anywhere. To install it to your `/usr/local/bin` directory, use a script like this one:
+
+```bash
+DFM_VERSION=$(uname -s | tr A-Z a-z)_amd64 # "darwin_amd64" or "linux_amd64"
+curl -sSL https://github.com/cgamesplay/dfm/releases/latest/download/$DFM_VERSION.tar.gz -o dfm.tar.gz
+tar -xf dfm.tar.gz
+sudo mv dfm /usr/local/bin/
+dfm --version
+```
+
 ## Quick Start
 
 To get started with dfm from a blank slate (to see how it works), try these commands:
