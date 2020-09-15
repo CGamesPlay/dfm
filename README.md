@@ -12,6 +12,10 @@ dfm is a generic file syncing utility to keep two directories in sync, using sym
 
 [![asciicast](https://asciinema.org/a/284642.svg)](https://asciinema.org/a/284642)
 
+## Project status
+
+This project is "done". It's maintained, but there are no planned new features. It's actively used to handle [the author's dotfiles](https://github.com/CGamesPlay/dotfiles) and possibly others with few issues reported. If you identify a bug or dfm is not compatible with some OS, please don't hesitate to file a pull request or open an issue.
+
 ## Installation
 
 dfm is distributed as a single binary and can be installed anywhere. To install it to your `/usr/local/bin` directory, use a script like this one:
