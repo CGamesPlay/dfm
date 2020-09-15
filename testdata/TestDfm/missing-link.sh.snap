@@ -1,0 +1,7 @@
+$ dfm init --repos files
+Initialized /test/home/dfmdir as a dfm directory.
+$ dfm link
+files/.bashrc -> /test/home/.bashrc
+$ dfm link
+removed .bashrc
+$ dfm link

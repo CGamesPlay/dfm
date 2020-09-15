@@ -461,8 +461,8 @@ func (dfm *Dfm) EjectFiles(inputFilenames []string, errorHandler ErrorHandler) e
 func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
 	var toRemove []string
 	for filename := range dfm.Config.manifest {
-		_, found := nextManifest[filename]
-		if !found {
+		_, needed := nextManifest[filename]
+		if !needed {
 			toRemove = append(toRemove, filename)
 		}
 	}
@@ -476,7 +476,7 @@ func (dfm *Dfm) autoclean(nextManifest map[string]bool) {
 			}
 		}
 		dfm.log(OperationRemove, filename, "", err)
-		if err == nil {
+		if err == nil || os.IsNotExist(err) {
 			delete(dfm.Config.manifest, filename)
 		}
 	}
