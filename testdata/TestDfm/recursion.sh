@@ -11,5 +11,5 @@ mkdir -p ~/dfmdir/files
 dfm init --repos files
 cd ~/dfmdir/files
 echo 'vim config' > .vimrc
-dfm add .vimrc && fail 'file recursively added' || true
+dfm add .vimrc && fail 'file recursively added'
 dfm link .vimrc

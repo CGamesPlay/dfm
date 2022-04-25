@@ -14,5 +14,9 @@ fail() {
 
 dfm() {
   echo "\$ dfm" "$@"
+  set +e
   command dfm "$@"
+  status=$?
+  set -e
+  return $status
 }
