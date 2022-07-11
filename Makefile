@@ -14,14 +14,22 @@ bin/darwin_amd64/dfm: $(SOURCES)
 	mkdir -p $(dir $@)
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ $(GOFLAGS_release) .
 
+bin/darwin_arm64/dfm: $(SOURCES)
+	mkdir -p $(dir $@)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $@ $(GOFLAGS_release) .
+
 bin/linux_amd64/dfm: $(SOURCES)
 	mkdir -p $(dir $@)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ $(GOFLAGS_release) .
 
+bin/linux_arm/dfm: $(SOURCES)
+	mkdir -p $(dir $@)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o $@ $(GOFLAGS_release) .
+
 bin/%.tar.gz: bin/%/dfm
 	tar -czf $@ -C $(dir $^) $(notdir $^)
 
-release: bin/darwin_amd64.tar.gz bin/linux_amd64.tar.gz
+release: bin/darwin_amd64.tar.gz bin/darwin_arm64.tar.gz bin/linux_amd64.tar.gz bin/linux_arm.tar.gz
 
 test: install
 	go test . -tags=integration
