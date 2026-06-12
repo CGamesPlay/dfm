@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -112,9 +113,9 @@ func MoveFile(fs afero.Fs, source, dest string) error {
 		cmd := exec.Command("mv", "-n", source, dest)
 		if err := cmd.Run(); err != nil {
 			if exitErr := err.(*exec.ExitError); exitErr != nil && len(exitErr.Stderr) > 0 {
-				return fmt.Errorf(string(exitErr.Stderr))
+				return errors.New(string(exitErr.Stderr))
 			}
-			return fmt.Errorf("failed to move file")
+			return errors.New("failed to move file")
 		}
 		return nil
 	case *afero.MemMapFs:
@@ -143,9 +144,9 @@ func CopyFile(fs afero.Fs, source, dest string) error {
 		cmd := exec.Command("cp", "-pn", source, dest)
 		if err := cmd.Run(); err != nil {
 			if exitErr := err.(*exec.ExitError); exitErr != nil && len(exitErr.Stderr) > 0 {
-				return fmt.Errorf(string(exitErr.Stderr))
+				return errors.New(string(exitErr.Stderr))
 			}
-			return fmt.Errorf("failed to copy file")
+			return errors.New("failed to copy file")
 		}
 		return nil
 	case *afero.MemMapFs:

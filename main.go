@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ func defaultLogger(operation, relative, repo string, reason error) {
 		if IsNotNeeded(reason) && !verbose {
 			return
 		} else if fileErr, ok := reason.(*FileError); ok {
-			reason = fmt.Errorf(fileErr.Message)
+			reason = errors.New(fileErr.Message)
 		}
 		fmt.Printf("skipping %s: %s\n", dfm.TargetPath(relative), reason)
 	default:
